@@ -378,7 +378,7 @@ class NetflixBulkChecker:
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Send me a **ZIP file** containing your Netflix cookie .txt files.\nOne account per .txt file.\nI will check them all instantly!")
+    bot.reply_to(message, "👋 Send me a **ZIP file** containing your Netflix cookie .txt files.\nOne account per .txt file.")
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
@@ -420,4 +420,6 @@ def handle_document(message):
                 bot.reply_to(message, "❌ No hits found.")
 
     except Exception as e:
-        bot.reply_to(me
+        bot.reply_to(message, f"⚠️ Error: {str(e)}")
+
+if 
