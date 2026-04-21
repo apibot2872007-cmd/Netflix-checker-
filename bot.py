@@ -42,13 +42,11 @@ class NetflixBulkChecker:
         return flags.get(code.upper(), '🌍')
 
     def parse_netscape_cookie(self, text):
-        """Universal parser - supports ALL formats"""
         cookies = {}
         text = text.strip()
         if not text:
             return cookies
 
-        # Single line cookie
         if ';' in text and '=' in text:
             for part in text.split(';'):
                 part = part.strip()
@@ -58,7 +56,6 @@ class NetflixBulkChecker:
             if cookies:
                 return cookies
 
-        # Multi-line formats
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith('#'):
@@ -112,7 +109,6 @@ class NetflixBulkChecker:
                 'cookie': cookie_text.strip()
             }
 
-            # NF Token
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
@@ -165,8 +161,8 @@ class NetflixBulkChecker:
                 
                 os.makedirs('hits', exist_ok=True)
                 fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
+                
                 with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-                    f.write(f"Cookie:\n{result['cookie']}\n\n")
                     f.write(f"Email: {result['email']}\n")
                     f.write(f"Plan: {result['plan']}\n")
                     f.write(f"Country: {result['country_code']}\n")
@@ -174,8 +170,12 @@ class NetflixBulkChecker:
                     f.write(f"Phone: {result['phone']}\n")
                     f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
                     f.write(f"Profiles: {result['profiles']}\n")
-                    f.write(f"Login URL: {result.get('login_url', 'N/A')}\n")
-                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")
+                    f.write(f"Login URL: {result.get('login_url', 'N/A')}\n\n")
+                    f.write(f"Cookie:\n{result['cookie']}\n\n")
+                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n\n")
+                    f.write("checked by @Nf_premium_checker_bot\n")
+                    f.write("Bot Made by @Sudhakaran12\n")
+                
                 print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
@@ -216,11 +216,10 @@ def handle_zip(message):
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "input.zip")
             
-            # === THIS IS THE PART THAT FIXES 1.5 MB TIMEOUT ===
             with requests.get(file_url, stream=True, timeout=(15, 360)) as response:
                 response.raise_for_status()
                 with open(zip_path, 'wb') as f:
-                    shutil.copyfileobj(response.raw, f, length=256*1024)   # 256KB chunks
+                    shutil.copyfileobj(response.raw, f, length=256*1024)
 
             extract_dir = os.path.join(tmp, "cookies")
             os.makedirs(extract_dir, exist_ok=True)
