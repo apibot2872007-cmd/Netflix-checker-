@@ -229,9 +229,3 @@ if name == "main":
 print("🚀 Netflix Cookie Checker Bot Started Successfully")
 bot.remove_webhook()
 bot.infinity_polling(skip_pending=True)
-
-I don't want hits in bot chat i want only all account details+ nf token cookie in file
-
-Don't change anything just change what i said
-
-Give code without any syntax error
