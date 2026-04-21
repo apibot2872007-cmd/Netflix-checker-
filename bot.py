@@ -42,13 +42,13 @@ class NetflixBulkChecker:
         return flags.get(code.upper(), '🌍')
 
     def parse_netscape_cookie(self, text):
-        """Universal parser - supports ALL common cookie formats"""
+        """Universal parser - supports ALL formats"""
         cookies = {}
         text = text.strip()
         if not text:
             return cookies
 
-        # 1. Single line full cookie string
+        # Single line cookie
         if ';' in text and '=' in text:
             for part in text.split(';'):
                 part = part.strip()
@@ -58,7 +58,7 @@ class NetflixBulkChecker:
             if cookies:
                 return cookies
 
-        # 2. Line by line
+        # Multi-line formats
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith('#'):
@@ -112,6 +112,7 @@ class NetflixBulkChecker:
                 'cookie': cookie_text.strip()
             }
 
+            # NF Token
             try:
                 nftoken = self.generate_nftoken(cookies)
                 if nftoken:
@@ -206,7 +207,7 @@ def handle_zip(message):
         bot.reply_to(message, "❌ Please send a .zip file")
         return
 
-    bot.reply_to(message, "✅ ZIP received. Downloading large file... (please wait)")
+    bot.reply_to(message, "✅ ZIP received. Downloading large file... (this may take a few seconds)")
 
     try:
         file_info = bot.get_file(message.document.file_id)
@@ -215,11 +216,11 @@ def handle_zip(message):
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "input.zip")
             
-            # FIXED: Ultra-reliable streaming download with shutil
-            with requests.get(file_url, stream=True, timeout=(10, 300)) as response:
+            # === THIS IS THE PART THAT FIXES 1.5 MB TIMEOUT ===
+            with requests.get(file_url, stream=True, timeout=(15, 360)) as response:
                 response.raise_for_status()
                 with open(zip_path, 'wb') as f:
-                    shutil.copyfileobj(response.raw, f, length=128*1024)  # 128KB chunks - fast & stable
+                    shutil.copyfileobj(response.raw, f, length=256*1024)   # 256KB chunks
 
             extract_dir = os.path.join(tmp, "cookies")
             os.makedirs(extract_dir, exist_ok=True)
@@ -243,7 +244,7 @@ def handle_zip(message):
                 bot.reply_to(message, "❌ No hits found.")
 
     except Exception as e:
-        bot.reply_to(message, f"❌ Error processing ZIP: {str(e)[:300]}")
+        bot.reply_to(message, f"❌ Error processing ZIP: {str(e)[:400]}")
 
 if __name__ == "__main__":
     print("🚀 Netflix Cookie Checker Bot Started Successfully")
