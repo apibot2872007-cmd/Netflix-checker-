@@ -79,7 +79,7 @@ def validate_api_key(key):
 
 # ====================== YOUR EXACT WORKING COOKIE CHECKER ======================
 class NetflixBulkChecker:
-    def __init__(self, threads=20):
+    def __init__(self, threads=60):
         self.threads = threads
         self.lock = threading.Lock()
         self.stats = {'total': 0, 'checked': 0, 'hits': 0, 'bad': 0, 'errors': 0, 'start_time': time.time()}
